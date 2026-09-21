@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Web Deck Controller - PlayStation / Xbox / Steam Deck</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PeerJS para Conexão P2P de Baixa Latência -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- QRCode JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none; /* Impede zoom e rolar página no touch */
+            -webkit-touch-callout: none;
+        }
+
+        body {
+            background-color: #0b0f19;
+            color: #f3f4f6;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Textura estilo Steam Deck e fibra de carbono */
+        .controller-bg {
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 70%, #020617 100%);
+        }
+
+        .touchpad {
+            background: radial-gradient(circle at center, #272f45 0%, #151c2e 100%);
+            box-shadow: inset 0 3px 8px rgba(0,0,0,0.8), 0 1px 2px rgba(255,255,255,0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .btn-gamepad {
+            background: linear-gradient(145deg, #2a3449, #1a2233);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+            transition: transform 0.05s ease, background 0.05s ease, box-shadow 0.05s ease;
+        }
+
+        .btn-gamepad:active, .btn-gamepad.active {
+            transform: scale(0.92);
+            background: linear-gradient(145deg, #3b82f6, #1d4ed8);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.6), inset 0 2px 4px rgba(0,0,0,0.4);
+        }
+
+        .dpad-btn {
+            background: linear-gradient(145deg, #1e293b, #0f172a);
+            box-shadow: inset 0 1px 2px rgba(255,255,255,0.1), 0 3px 6px rgba(0,0,0,0.6);
+        }
+
+        .dpad-btn:active, .dpad-btn.active {
+            background: #3b82f6;
+            box-shadow: 0 0 12px #3b82f6;
+        }
+
+        .joystick-base {
+            background: radial-gradient(circle, #0f172a 40%, #1e293b 100%);
+            box-shadow: inset 0 4px 10px rgba(0,0,0,0.9), 0 0 0 2px rgba(255,255,255,0.05);
+        }
+
+        .joystick-stick {
+            background: radial-gradient(circle at 35% 35%, #38bdf8 0%, #1d4ed8 50%, #0f172a 100%);
+            box-shadow: 0 6px 14px rgba(0,0,0,0.7), inset 0 2px 3px rgba(255,255,255,0.4);
+        }
+
+        /* LEDs de iluminação temática */
+        .glow-ps {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+        }
+        .glow-xbox {
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+        }
+        .glow-steam {
+            box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
+        }
+        .glow-cyberpunk {
+            box-shadow: 0 0 25px rgba(244, 63, 94, 0.4);
+        }
+
+        /* Efeito de scanline tático */
+        .scanlines {
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+            background-size: 100% 4px;
+        }
+
+        /* Estilo para abas do modal */
+        .tab-active {
+            background-color: #2563eb !important;
+            color: #ffffff !important;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+    </style>
+</head>
+<body class="controller-bg flex flex-col justify-between h-screen w-screen overflow-hidden select-none">
+
+    <!-- BARRA SUPERIOR DE CONTROLE DE SESSÃO -->
+    <header class="w-full bg-slate-900/90 border-b border-slate-800 p-2 sm:p-3 flex items-center justify-between z-30 backdrop-blur-md">
+        <div class="flex items-center space-x-2">
+            <div class="bg-blue-600 text-white p-2 rounded-lg flex items-center justify-center font-bold shadow-lg shadow-blue-500/30">
+                <i class="fa-solid font-black fa-gamepad text-xl"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-xs sm:text-sm font-bold tracking-wider text-slate-100 uppercase">Web Controller Ultra</h1>
+                    <span id="ping-badge" class="bg-slate-800 text-[10px] font-mono text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30 hidden">0ms</span>
+                </div>
+                <p id="connection-status" class="text-[10px] sm:text-xs text-amber-400 font-semibold flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span> Aguardando Seleção
+                </p>
+            </div>
+        </div>
+
+        <!-- Seletor de Modo & Botões de Ação -->
+        <div class="flex items-center gap-1.5 sm:gap-2">
+            <!-- Alternar Giroscópio -->
+            <button id="btn-gyro-toggle" title="Ativar Giroscópio / Sensor de Movimento" class="bg-slate-800 hover:bg-slate-700 text-slate-400 p-2 rounded-lg text-xs border border-slate-700 flex items-center gap-1">
+                <i class="fa-solid fa-compass"></i>
+                <span class="hidden md:inline text-[11px]">Giroscópio</span>
+            </button>
+
+            <!-- Botão Forçar Sincronização / Reconectar -->
+            <button id="btn-force-sync" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg transition flex items-center gap-1 shadow-md shadow-emerald-600/30">
+                <i class="fa-solid fa-rotate"></i> <span class="hidden sm:inline">Sincronizar</span>
+            </button>
+
+            <!-- Alternar tema (PS / Xbox / Steam / Cyberpunk) -->
+            <select id="theme-selector" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 px-2 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="ps">PlayStation DualSense</option>
+                <option value="xbox">Xbox Series X</option>
+                <option value="steam" selected>Steam Deck OLED</option>
+                <option value="cyberpunk">Cyberpunk Neon</option>
+            </select>
+
+            <!-- Botão de Conectar/QR Code -->
+            <button id="btn-connect-modal" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-md shadow-blue-600/30">
+                <i class="fa-solid fa-plug"></i> <span class="hidden sm:inline">Modo Conexão</span>
+            </button>
+
+            <!-- Tela Cheia -->
+            <button id="btn-fullscreen" class="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg text-xs border border-slate-700">
+                <i class="fa-solid fa-expand"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- AJUSTE ERGONÔMICO (POSIÇÃO VERTICAL) -->
+    <div id="position-adjuster" class="w-full bg-slate-900/60 backdrop-blur-sm px-4 py-1 flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800/50 z-20">
+        <span class="flex items-center gap-1"><i class="fa-solid fa-arrows-up-down"></i> Altura do Controle:</span>
+        <div class="flex items-center gap-2 w-1/2 max-w-xs">
+            <span class="text-[10px]">Topo</span>
+            <input type="range" id="vertical-offset" min="0" max="35" value="15" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+            <span class="text-[10px]">Baixo</span>
+        </div>
+        <span id="offset-val" class="font-mono text-blue-400">15%</span>
+    </div>
+
+        <!-- Seletor de Modo & Botões de Ação -->
+        <div class="flex items-center gap-2">
+            <!-- Alternar tema (PS / Xbox / Steam) -->
+            <select id="theme-selector" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 px-2 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="ps">Estilo PlayStation</option>
+                <option value="xbox">Estilo Xbox</option>
+                <option value="steam" selected>Estilo Steam Deck</option>
+            </select>
+
+            <!-- Botão de Conectar/QR Code -->
+            <button id="btn-connect-modal" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1">
+                <i class="fa-solid fa-wifi"></i> <span class="hidden sm:inline">Conectar</span>
+            </button>
+
+            <!-- Tela Cheia -->
+            <button id="btn-fullscreen" class="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg text-xs">
+                <i class="fa-solid fa-expand"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- AJUSTE ERGONÔMICO (POSIÇÃO VERTICAL) -->
+    <div id="position-adjuster" class="w-full bg-slate-900/60 backdrop-blur-sm px-4 py-1 flex items-center justify-between text-[11px] text-slate-400 border-b border-slate-800/50 z-20">
+        <span class="flex items-center gap-1"><i class="fa-solid fa-arrows-up-down"></i> Altura do Controle:</span>
+        <div class="flex items-center gap-2 w-1/2 max-w-xs">
+            <span class="text-[10px]">Topo</span>
+            <input type="range" id="vertical-offset" min="0" max="30" value="12" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+            <span class="text-[10px]">Baixo</span>
+        </div>
+        <span id="offset-val" class="font-mono text-blue-400">12%</span>
+    </div>
+
+    <!-- CONTAINER DO CONTROLE VIRTUAL -->
+    <main id="controller-wrapper" class="flex-1 relative flex flex-col justify-end pb-2 px-2 sm:px-6 w-full max-w-7xl mx-auto transition-all duration-200">
+        
+        <!-- LINHA DE GATILHOS SUPERIORES (L1/L2 e R1/R2) -->
+        <div class="w-full flex justify-between px-4 mb-2 z-10">
+            <!-- Gatilhos Esquerdos -->
+            <div class="flex gap-2">
+                <button data-btn="L2" class="btn-gamepad h-10 w-16 sm:w-20 rounded-t-xl text-xs font-bold text-slate-300 border-t-2 border-slate-500 flex flex-col items-center justify-center">
+                    <span>L2</span>
+                    <div class="w-8 h-1 bg-slate-700 rounded-full mt-0.5 overflow-hidden">
+                        <div id="gauge-L2" class="h-full bg-blue-500 w-0 transition-all"></div>
+                    </div>
+                </button>
+                <button data-btn="L1" class="btn-gamepad h-10 w-16 sm:w-20 rounded-t-lg text-xs font-bold text-slate-300 border-t-2 border-slate-400 flex items-center justify-center">
+                    L1
+                </button>
+            </div>
+
+            <!-- Botões Centrais (Share / Home / Options) -->
+            <div class="flex gap-2 items-center">
+                <button data-btn="SELECT" class="btn-gamepad h-8 w-10 sm:w-12 rounded-lg text-[10px] font-bold text-slate-400 flex items-center justify-center">
+                    <i class="fa-solid fa-bars-staggered"></i>
+                </button>
+                <button data-btn="HOME" class="btn-gamepad h-10 w-10 sm:w-12 rounded-full text-blue-400 text-sm font-bold flex items-center justify-center border border-blue-500/30">
+                    <i class="fa-solid fa-gamepad"></i>
+                </button>
+                <button data-btn="START" class="btn-gamepad h-8 w-10 sm:w-12 rounded-lg text-[10px] font-bold text-slate-400 flex items-center justify-center">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
+
+            <!-- Gatilhos Direitos -->
+            <div class="flex gap-2">
+                <button data-btn="R1" class="btn-gamepad h-10 w-16 sm:w-20 rounded-t-lg text-xs font-bold text-slate-300 border-t-2 border-slate-400 flex items-center justify-center">
+                    R1
+                </button>
+                <button data-btn="R2" class="btn-gamepad h-10 w-16 sm:w-20 rounded-t-xl text-xs font-bold text-slate-300 border-t-2 border-slate-500 flex flex-col items-center justify-center">
+                    <span>R2</span>
+                    <div class="w-8 h-1 bg-slate-700 rounded-full mt-0.5 overflow-hidden">
+                        <div id="gauge-R2" class="h-full bg-blue-500 w-0 transition-all"></div>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <!-- ÁREA PRINCIPAL DOS COMANDOS (LADO ESQUERDO E DIREITO) -->
+        <div class="grid grid-cols-2 gap-2 sm:gap-6 w-full items-end pb-2">
+            
+            <!-- PAINEL ESQUERDO: D-PAD + JOYSTICK ESQUERDO + TOUCHPAD ESQUERDO -->
+            <div class="flex flex-col gap-3 items-center sm:items-start">
+                
+                <div class="flex items-center gap-3 justify-center w-full">
+                    <!-- D-PAD (DIRECIONAL) -->
+                    <div class="relative w-32 h-32 sm:w-36 sm:h-36 flex-shrink-0">
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <!-- Centro D-Pad -->
+                            <div class="w-10 h-10 bg-slate-900 rounded-md z-10 shadow-inner border border-slate-800"></div>
+                            <!-- Cima -->
+                            <button data-btn="DPAD_UP" class="dpad-btn absolute top-0 w-10 h-12 rounded-t-lg text-slate-300 flex items-center justify-center active:bg-blue-600">
+                                <i class="fa-solid fa-caret-up text-lg"></i>
+                            </button>
+                            <!-- Baixo -->
+                            <button data-btn="DPAD_DOWN" class="dpad-btn absolute bottom-0 w-10 h-12 rounded-b-lg text-slate-300 flex items-center justify-center active:bg-blue-600">
+                                <i class="fa-solid fa-caret-down text-lg"></i>
+                            </button>
+                            <!-- Esquerda -->
+                            <button data-btn="DPAD_LEFT" class="dpad-btn absolute left-0 h-10 w-12 rounded-l-lg text-slate-300 flex items-center justify-center active:bg-blue-600">
+                                <i class="fa-solid fa-caret-left text-lg"></i>
+                            </button>
+                            <!-- Direita -->
+                            <button data-btn="DPAD_RIGHT" class="dpad-btn absolute right-0 h-10 w-12 rounded-r-lg text-slate-300 flex items-center justify-center active:bg-blue-600">
+                                <i class="fa-solid fa-caret-right text-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ANALÓGICO ESQUERDO (L3) -->
+                    <div id="joystick-left-base" class="joystick-base w-28 h-28 sm:w-32 sm:h-32 rounded-full relative flex items-center justify-center touch-none flex-shrink-0">
+                        <div id="joystick-left-stick" class="joystick-stick w-14 h-14 sm:w-16 sm:h-16 rounded-full absolute cursor-pointer flex items-center justify-center text-[10px] text-white/50 font-bold">
+                            L3
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEAM DECK TOUCHPAD ESQUERDO -->
+                <div id="touchpad-left" class="touchpad w-full h-20 sm:h-24 rounded-xl relative overflow-hidden flex flex-col items-center justify-center text-slate-500 border border-slate-700/50">
+                    <i class="fa-solid fa-fingerprint text-xl mb-1 text-slate-400"></i>
+                    <span class="text-[10px] uppercase font-semibold tracking-wider text-slate-400">Touchpad L (Navegação)</span>
+                    <div id="tp-left-feedback" class="absolute w-6 h-6 rounded-full bg-blue-500/30 pointer-events-none scale-0 transition-transform"></div>
+                </div>
+
+            </div>
+
+            <!-- PAINEL DIREITO: BOTÕES DE AÇÃO + JOYSTICK DIREITO + TOUCHPAD DIREITO -->
+            <div class="flex flex-col gap-3 items-center sm:items-end">
+                
+                <div class="flex items-center gap-3 justify-center w-full">
+                    <!-- ANALÓGICO DIREITO (R3) -->
+                    <div id="joystick-right-base" class="joystick-base w-28 h-28 sm:w-32 sm:h-32 rounded-full relative flex items-center justify-center touch-none flex-shrink-0">
+                        <div id="joystick-right-stick" class="joystick-stick w-14 h-14 sm:w-16 sm:h-16 rounded-full absolute cursor-pointer flex items-center justify-center text-[10px] text-white/50 font-bold">
+                            R3
+                        </div>
+                    </div>
+
+                    <!-- BOTÕES DE AÇÃO (ABXY / TRIÂNGULO, BOLA, X, QUADRADO) -->
+                    <div class="relative w-32 h-32 sm:w-36 sm:h-36 flex-shrink-0">
+                        <!-- Topo (Y / Triângulo) -->
+                        <button data-btn="BTN_Y" id="btn-top" class="btn-gamepad absolute top-0 left-1/2 -translate-x-1/2 w-11 h-11 sm:w-12 sm:h-12 rounded-full font-bold text-emerald-400 text-lg flex items-center justify-center">
+                            <span class="btn-label-steam">Y</span>
+                            <span class="btn-label-ps hidden"><i class="fa-solid fa-play -rotate-90 text-sm"></i></span>
+                        </button>
+                        <!-- Baixo (A / X) -->
+                        <button data-btn="BTN_A" id="btn-bottom" class="btn-gamepad absolute bottom-0 left-1/2 -translate-x-1/2 w-11 h-11 sm:w-12 sm:h-12 rounded-full font-bold text-sky-400 text-lg flex items-center justify-center">
+                            <span class="btn-label-steam">A</span>
+                            <span class="btn-label-ps hidden"><i class="fa-solid fa-xmark text-sm"></i></span>
+                        </button>
+                        <!-- Esquerda (X / Quadrado) -->
+                        <button data-btn="BTN_X" id="btn-left" class="btn-gamepad absolute left-0 top-1/2 -translate-y-1/2 w-11 h-11 sm:w-12 sm:h-12 rounded-full font-bold text-amber-400 text-lg flex items-center justify-center">
+                            <span class="btn-label-steam">X</span>
+                            <span class="btn-label-ps hidden"><i class="fa-regular fa-square text-sm"></i></span>
+                        </button>
+                        <!-- Direita (B / Círculo) -->
+                        <button data-btn="BTN_B" id="btn-right" class="btn-gamepad absolute right-0 top-1/2 -translate-y-1/2 w-11 h-11 sm:w-12 sm:h-12 rounded-full font-bold text-rose-400 text-lg flex items-center justify-center">
+                            <span class="btn-label-steam">B</span>
+                            <span class="btn-label-ps hidden"><i class="fa-regular fa-circle text-sm"></i></span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- STEAM DECK TOUCHPAD DIREITO (Mouse / Câmera) -->
+                <div id="touchpad-right" class="touchpad w-full h-20 sm:h-24 rounded-xl relative overflow-hidden flex flex-col items-center justify-center text-slate-500 border border-slate-700/50">
+                    <i class="fa-solid fa-arrow-pointer text-xl mb-1 text-slate-400"></i>
+                    <span class="text-[10px] uppercase font-semibold tracking-wider text-slate-400">Touchpad R (Câmera / Mouse)</span>
+                    <div id="tp-right-feedback" class="absolute w-6 h-6 rounded-full bg-indigo-500/30 pointer-events-none scale-0 transition-transform"></div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- MODAL DE CONEXÃO & QR CODE -->
+    <div id="connection-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-5 sm:p-6 text-center shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button id="btn-close-modal" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <h2 class="text-xl font-bold text-white mb-1 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-network-wired text-blue-400"></i> Métodos de Conexão com o PC / TV
+            </h2>
+            <p class="text-xs text-slate-400 mb-4">Escolha a melhor forma de transmitir seus comandos de acordo com sua rede:</p>
+
+            <!-- TABS DE MODOS DE CONEXÃO -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-800/80 p-1 rounded-xl mb-5 text-[11px] font-bold">
+                <button id="tab-webrtc" class="py-2 px-1 rounded-lg tab-active transition">
+                    <i class="fa-solid fa-wifi block text-sm mb-0.5"></i> Nuvem (WebRTC)
+                </button>
+                <button id="tab-websocket" class="py-2 px-1 rounded-lg text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-ethernet block text-sm mb-0.5"></i> USB / IP Local
+                </button>
+                <button id="tab-pcdriver" class="py-2 px-1 rounded-lg text-slate-400 hover:text-white transition">
+                    <i class="fa-brands fa-xbox block text-sm mb-0.5"></i> Driver PC Xbox
+                </button>
+                <button id="tab-receiver" class="py-2 px-1 rounded-lg text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-desktop block text-sm mb-0.5"></i> Modo Receptor
+                </button>
+            </div>
+
+            <!-- MODO 1: WEBRTC (CÓDIGO DE SALA NUVEM) -->
+            <div id="view-tab-webrtc" class="space-y-4">
+                <p class="text-xs text-slate-300">Digite o código exibido na tela do receptor (PC/TV) para parear:</p>
+                <div class="flex gap-2">
+                    <input type="text" id="input-room-id" placeholder="Ex: A8F91" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-center text-lg font-mono font-bold uppercase text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button id="btn-join-room" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition shadow-lg shadow-blue-600/30">
+                        Conectar
+                    </button>
+                </div>
+                <div class="text-[11px] text-slate-400 text-left bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 space-y-1">
+                    <p class="font-semibold text-slate-300"><i class="fa-solid fa-circle-info text-blue-400 mr-1"></i> Se não conectar:</p>
+                    <p>Clique em <strong>"Sincronizar"</strong> na barra superior ou experimente a aba <strong>"USB / IP Local"</strong> se estiver usando cabo USB de ancoragem!</p>
+                </div>
+            </div>
+
+            <!-- MODO 2: WEBSOCKET DIRETO / USB LOCAL (SEM INTERNET) -->
+            <div id="view-tab-websocket" class="space-y-4 hidden text-left">
+                <div class="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 space-y-2">
+                    <p class="text-xs text-slate-200 font-semibold flex items-center gap-1.5">
+                        <i class="fa-solid fa-bolt text-amber-400"></i> Conexão Direta Via Ancoramento USB ou Wi-Fi Local
+                    </p>
+                    <p class="text-[11px] text-slate-400">
+                        Conecte seu celular ao PC via cabo USB, ative <strong>Ancoragem USB</strong> nas configurações do Android/iOS e digite o endereço do servidor WebSocket rodando no PC:
+                    </p>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[11px] font-bold text-slate-300 uppercase">Endereço Servidor Local (WS):</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="input-ws-url" value="ws://192.168.1.100:8080" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <button id="btn-connect-ws" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-xl text-xs transition">
+                            Ligar WS
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODO 3: DRIVER DE PC (SCRIPT PYTHON/NODE XINPUT REAL) -->
+            <div id="view-tab-pcdriver" class="space-y-3 hidden text-left">
+                <div class="bg-blue-950/40 border border-blue-800/50 p-3 rounded-xl space-y-2">
+                    <h3 class="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                        <i class="fa-brands fa-xbox text-emerald-400 text-sm"></i> Como Fazer o Windows Reconhecer como Controle de Xbox 360 Real?
+                    </h3>
+                    <p class="text-[11px] text-slate-300 leading-relaxed">
+                        Para jogos pesados do PC (FIFA, GTA V, Forza, Steam) reconhecerem o celular automaticamente, você pode executar este script Python ultraleve no seu PC que escuta o celular e simula o driver XInput de hardware:
+                    </p>
+                </div>
+
+                <div class="relative">
+                    <textarea id="script-python-code" readonly class="w-full h-32 bg-slate-950 text-slate-300 font-mono text-[10px] p-2.5 rounded-xl border border-slate-800 focus:outline-none select-all">
+# Script Receptor Python Xbox 360 Virtual para PC
+# Instale com: pip install vgamepad websockets asyncio
+import asyncio, json, websockets
+import vgamepad as vg
+
+gamepad = vg.VX360Gamepad()
+print("🎮 Driver de Controle Xbox 360 do Celular Ativado!")
+
+async def handler(websocket):
+    async for message in websocket:
+        data = json.loads(message)
+        # Mapeia botões do celular para XInput
+        if data.get('buttons'):
+            if data['buttons'].get('BTN_A'): gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
+            else: gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
+            if data['buttons'].get('BTN_B'): gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
+            else: gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
+            # Atualizar analógicos
+            if data.get('axes'):
+                gamepad.left_joystick_float(x_value_float=data['axes']['L3']['x'], y_value_float=-data['axes']['L3']['y'])
+                gamepad.right_joystick_float(x_value_float=data['axes']['R3']['x'], y_value_float=-data['axes']['R3']['y'])
+            gamepad.update()
+
+async def main():
+    async with websockets.serve(handler, "0.0.0.0", 8080):
+        await asyncio.Future()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+                    </textarea>
+                    <button id="btn-copy-python" class="absolute top-2 right-2 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition">
+                        <i class="fa-regular fa-copy"></i> Copiar Script
+                    </button>
+                </div>
+            </div>
+
+            <!-- MODO 4: MODO RECEPÇÃO / HOST PC (Exibe QR Code) -->
+            <div id="view-tab-receiver" class="space-y-4 hidden">
+                <p class="text-xs text-slate-300">Escaneie este QR Code com o celular ou digite este código na tela do controle:</p>
+                
+                <div class="flex justify-center p-3 bg-white rounded-xl w-fit mx-auto shadow-inner">
+                    <div id="qrcode"></div>
+                </div>
+
+                <div class="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                    <span class="text-xs text-slate-400 block mb-1">CÓDIGO DA SALA DO MONITOR</span>
+                    <span id="display-room-id" class="text-2xl font-mono font-extrabold text-blue-400 tracking-wider">GERANDO...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ESTADO GLOBAL DO CONTROLE
+        const controllerState = {
+            buttons: {},
+            axes: {
+                L3: { x: 0, y: 0 },
+                R3: { x: 0, y: 0 },
+                L2: 0,
+                R2: 0
+            },
+            touchpads: {
+                L: { x: 0, y: 0 },
+                R: { x: 0, y: 0 }
+            },
+            gyro: { alpha: 0, beta: 0, gamma: 0 },
+            timestamp: Date.now()
+        };
+
+        let peer = null;
+        let connection = null;
+        let wsConnection = null;
+        let isHost = false;
+        let audioCtx = null;
+        let gyroActive = false;
+        let lastPingTime = 0;
+
+        // SELETORES DO DOM
+        const wrapper = document.getElementById('controller-wrapper');
+        const posAdjuster = document.getElementById('vertical-offset');
+        const offsetVal = document.getElementById('offset-val');
+        const themeSelector = document.getElementById('theme-selector');
+        const connStatus = document.getElementById('connection-status');
+        const pingBadge = document.getElementById('ping-badge');
+        const modal = document.getElementById('connection-modal');
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playClickSound(freq = 400, type = 'sine') {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.05);
+            } catch (e) {}
+        }
+
+        function triggerVibration(duration = 15) {
+            if (navigator.vibrate) {
+                navigator.vibrate(duration);
+            }
+        }
+
+        posAdjuster.addEventListener('input', (e) => {
+            const val = e.target.value;
+            offsetVal.textContent = val + '%';
+            wrapper.style.paddingBottom = val + 'vh';
+        });
+
+        themeSelector.addEventListener('change', (e) => {
+            const theme = e.target.value;
+            const psLabels = document.querySelectorAll('.btn-label-ps');
+            const steamLabels = document.querySelectorAll('.btn-label-steam');
+
+            wrapper.className = wrapper.className.replace(/glow-\w+/g, '');
+
+            if (theme === 'ps') {
+                psLabels.forEach(el => el.classList.remove('hidden'));
+                steamLabels.forEach(el => el.classList.add('hidden'));
+                wrapper.classList.add('glow-ps');
+            } else if (theme === 'cyberpunk') {
+                psLabels.forEach(el => el.classList.add('hidden'));
+                steamLabels.forEach(el => el.classList.remove('hidden'));
+                wrapper.classList.add('glow-cyberpunk');
+            } else if (theme === 'xbox') {
+                psLabels.forEach(el => el.classList.add('hidden'));
+                steamLabels.forEach(el => el.classList.remove('hidden'));
+                wrapper.classList.add('glow-xbox');
+            } else {
+                psLabels.forEach(el => el.classList.add('hidden'));
+                steamLabels.forEach(el => el.classList.remove('hidden'));
+                wrapper.classList.add('glow-steam');
+            }
+        });
+
+        // ATIVAR E GERENCIAR GIROSCÓPIO (SENSORES DE MOVIMENTO)
+        document.getElementById('btn-gyro-toggle').addEventListener('click', async () => {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') {
+                        enableGyro();
+                    } else {
+                        alert('Permissão de giroscópio negada.');
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
+            } else {
+                enableGyro();
+            }
+        });
+
+        function enableGyro() {
+            gyroActive = !gyroActive;
+            const btn = document.getElementById('btn-gyro-toggle');
+            if (gyroActive) {
+                btn.className = "bg-amber-600 hover:bg-amber-500 text-white p-2 rounded-lg text-xs border border-amber-500 flex items-center gap-1 animate-pulse";
+                window.addEventListener('deviceorientation', handleOrientation);
+                triggerVibration(40);
+            } else {
+                btn.className = "bg-slate-800 hover:bg-slate-700 text-slate-400 p-2 rounded-lg text-xs border border-slate-700 flex items-center gap-1";
+                window.removeEventListener('deviceorientation', handleOrientation);
+            }
+        }
+
+        function handleOrientation(event) {
+            if (!gyroActive) return;
+            // Inclinação normalizada
+            const beta = Math.max(-45, Math.min(45, event.beta || 0)) / 45;
+            const gamma = Math.max(-45, Math.min(45, event.gamma || 0)) / 45;
+
+            controllerState.gyro = {
+                alpha: parseFloat((event.alpha || 0).toFixed(2)),
+                beta: parseFloat(beta.toFixed(2)),
+                gamma: parseFloat(gamma.toFixed(2))
+            };
+
+            // Opcional: Se desejar usar o giroscópio para esterçar o analógico esquerdo L3
+            controllerState.axes.L3.x = parseFloat(gamma.toFixed(2));
+            sendStateToPeer();
+        }
+
+        // FORÇAR RECONEXÃO / SINCRONIZAÇÃO
+        document.getElementById('btn-force-sync').addEventListener('click', () => {
+            triggerVibration(30);
+            if (connection && connection.open) {
+                lastPingTime = Date.now();
+                connection.send({ type: 'PING', timestamp: lastPingTime });
+                sendStateToPeer();
+            } else if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+                sendStateToPeer();
+            } else {
+                modal.classList.remove('hidden');
+            }
+        });
+
+        // GERENCIAMENTO DAS ABAS DO MODAL DE CONEXÃO
+        const tabs = ['webrtc', 'websocket', 'pcdriver', 'receiver'];
+        tabs.forEach(t => {
+            const btn = document.getElementById(`tab-${t}`);
+            btn.addEventListener('click', () => {
+                tabs.forEach(other => {
+                    document.getElementById(`tab-${other}`).className = "py-2 px-1 rounded-lg text-slate-400 hover:text-white transition";
+                    document.getElementById(`view-tab-${other}`).classList.add('hidden');
+                });
+                btn.className = "py-2 px-1 rounded-lg tab-active transition";
+                document.getElementById(`view-tab-${t}`).classList.remove('hidden');
+
+                if (t === 'receiver') {
+                    isHost = true;
+                    document.getElementById('host-tester-screen').classList.remove('hidden');
+                    buildHostButtonsGrid();
+                } else {
+                    isHost = false;
+                }
+            });
+        });
+
+        // COPIAR SCRIPT PYTHON
+        document.getElementById('btn-copy-python').addEventListener('click', () => {
+            const textarea = document.getElementById('script-python-code');
+            textarea.select();
+            document.execCommand('copy');
+            triggerVibration(20);
+            alert('Script Python copiado! Cole no seu computador e execute com "python script.py"');
+        });
+
+        // CONEXÃO WEBSOCKET LOCAL / USB
+        document.getElementById('btn-connect-ws').addEventListener('click', () => {
+            const wsUrl = document.getElementById('input-ws-url').value.trim();
+            if (!wsUrl) return;
+
+            try {
+                wsConnection = new WebSocket(wsUrl);
+
+                wsConnection.onopen = () => {
+                    modal.classList.add('hidden');
+                    connStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> Conectado via USB Local (WS)`;
+                    connStatus.className = "text-[10px] sm:text-xs text-emerald-400 font-semibold flex items-center gap-1";
+                    triggerVibration(50);
+                };
+
+                wsConnection.onerror = (err) => {
+                    alert('Erro ao conectar no servidor WebSocket. Verifique se o servidor está rodando no PC!');
+                };
+            } catch (e) {
+                alert('URL WebSocket Inválida!');
+            }
+        });
+
+        const buttons = document.querySelectorAll('[data-btn]');
+        
+        buttons.forEach(btn => {
+            const btnName = btn.getAttribute('data-btn');
+
+            const handlePress = (e) => {
+                e.preventDefault();
+                initAudio();
+                btn.classList.add('active');
+                controllerState.buttons[btnName] = true;
+                triggerVibration(18);
+                playClickSound(500, 'triangle');
+
+                if (btnName === 'L2') {
+                    controllerState.axes.L2 = 1.0;
+                    document.getElementById('gauge-L2').style.width = '100%';
+                }
+                if (btnName === 'R2') {
+                    controllerState.axes.R2 = 1.0;
+                    document.getElementById('gauge-R2').style.width = '100%';
+                }
+
+                sendStateToPeer();
+            };
+
+            const handleRelease = (e) => {
+                e.preventDefault();
+                btn.classList.remove('active');
+                controllerState.buttons[btnName] = false;
+
+                if (btnName === 'L2') {
+                    controllerState.axes.L2 = 0;
+                    document.getElementById('gauge-L2').style.width = '0%';
+                }
+                if (btnName === 'R2') {
+                    controllerState.axes.R2 = 0;
+                    document.getElementById('gauge-R2').style.width = '0%';
+                }
+
+                sendStateToPeer();
+            };
+
+            btn.addEventListener('touchstart', handlePress, { passive: false });
+            btn.addEventListener('touchend', handleRelease, { passive: false });
+            btn.addEventListener('mousedown', handlePress);
+            btn.addEventListener('mouseup', handleRelease);
+        });
+
+        function setupJoystick(baseId, stickId, axisKey) {
+            const base = document.getElementById(baseId);
+            const stick = document.getElementById(stickId);
+            let active = false;
+            let touchId = null;
+
+            const maxDistance = base.clientWidth / 2 - 10;
+
+            function updatePosition(clientX, clientY) {
+                const rect = base.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+
+                let deltaX = clientX - centerX;
+                let deltaY = clientY - centerY;
+                const distance = Math.hypot(deltaX, deltaY);
+
+                if (distance > maxDistance) {
+                    const angle = Math.atan2(deltaY, deltaX);
+                    deltaX = Math.cos(angle) * maxDistance;
+                    deltaY = Math.sin(angle) * maxDistance;
+                }
+
+                stick.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+
+                controllerState.axes[axisKey].x = parseFloat((deltaX / maxDistance).toFixed(2));
+                controllerState.axes[axisKey].y = parseFloat((deltaY / maxDistance).toFixed(2));
+
+                sendStateToPeer();
+            }
+
+            function handleStart(e) {
+                initAudio();
+                active = true;
+                if (e.touches) {
+                    const touch = e.changedTouches[0];
+                    touchId = touch.identifier;
+                    updatePosition(touch.clientX, touch.clientY);
+                } else {
+                    updatePosition(e.clientX, e.clientY);
+                }
+                triggerVibration(10);
+            }
+
+            function handleMove(e) {
+                if (!active) return;
+                if (e.touches) {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        if (e.changedTouches[i].identifier === touchId) {
+                            updatePosition(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+                            break;
+                        }
+                    }
+                } else {
+                    updatePosition(e.clientX, e.clientY);
+                }
+            }
+
+            function handleEnd(e) {
+                if (!active) return;
+                active = false;
+                touchId = null;
+                stick.style.transform = 'translate(0px, 0px)';
+                controllerState.axes[axisKey].x = 0;
+                controllerState.axes[axisKey].y = 0;
+                sendStateToPeer();
+            }
+
+            base.addEventListener('touchstart', handleStart, { passive: false });
+            window.addEventListener('touchmove', handleMove, { passive: false });
+            window.addEventListener('touchend', handleEnd, { passive: false });
+
+            base.addEventListener('mousedown', handleStart);
+            window.addEventListener('mousemove', handleMove);
+            window.addEventListener('mouseup', handleEnd);
+        }
+
+        setupJoystick('joystick-left-base', 'joystick-left-stick', 'L3');
+        setupJoystick('joystick-right-base', 'joystick-right-stick', 'R3');
+
+        function setupTouchpad(padId, feedbackId, padKey) {
+            const pad = document.getElementById(padId);
+            const feedback = document.getElementById(feedbackId);
+
+            function handleTouch(e) {
+                if (!e.touches) return;
+                const touch = e.touches[0];
+                const rect = pad.getBoundingClientRect();
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+
+                feedback.style.transform = `translate(${x - 12}px, ${y - 12}px) scale(1)`;
+
+                controllerState.touchpads[padKey].x = parseFloat((x / rect.width).toFixed(2));
+                controllerState.touchpads[padKey].y = parseFloat((y / rect.height).toFixed(2));
+                
+                triggerVibration(5);
+                sendStateToPeer();
+            }
+
+            function handleTouchEnd() {
+                feedback.style.transform = 'scale(0)';
+            }
+
+            pad.addEventListener('touchmove', handleTouch, { passive: false });
+            pad.addEventListener('touchend', handleTouchEnd);
+        }
+
+        setupTouchpad('touchpad-left', 'tp-left-feedback', 'L');
+        setupTouchpad('touchpad-right', 'tp-right-feedback', 'R');
+
+        function initPeer() {
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                console.log('Peer ID criado:', id);
+                document.getElementById('display-room-id').textContent = id.substring(0, 5).toUpperCase();
+
+                const qrContainer = document.getElementById('qrcode');
+                qrContainer.innerHTML = '';
+                new QRCode(qrContainer, {
+                    text: window.location.href + '?room=' + id,
+                    width: 128,
+                    height: 128
+                });
+            });
+
+            peer.on('connection', (conn) => {
+                connection = conn;
+                setupConnectionListeners();
+                connStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> Conectado ao PC`;
+                connStatus.className = "text-[10px] sm:text-xs text-emerald-400 font-semibold flex items-center gap-1";
+            });
+        }
+
+        function setupConnectionListeners() {
+            connection.on('data', (data) => {
+                if (data && data.type === 'PONG') {
+                    const ping = Date.now() - data.timestamp;
+                    pingBadge.textContent = ping + 'ms';
+                    pingBadge.classList.remove('hidden');
+                }
+                if (isHost) {
+                    updateHostTesterUI(data);
+                }
+            });
+
+            connection.on('open', () => {
+                modal.classList.add('hidden');
+                connStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> Conexão WebRTC Ativa`;
+                connStatus.className = "text-[10px] sm:text-xs text-emerald-400 font-semibold flex items-center gap-1";
+                
+                // Disparar Ping de Teste
+                connection.send({ type: 'PING', timestamp: Date.now() });
+            });
+        }
+
+        function sendStateToPeer() {
+            controllerState.timestamp = Date.now();
+            if (connection && connection.open) {
+                connection.send(controllerState);
+            }
+            if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+                wsConnection.send(JSON.stringify(controllerState));
+            }
+        }
+
+        window.addEventListener('load', () => {
+            initPeer();
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('room');
+            if (roomId) {
+                document.getElementById('input-room-id').value = roomId;
+                setTimeout(() => {
+                    connectToRoom(roomId);
+                }, 1000);
+            }
+        });
+
+        function connectToRoom(roomId) {
+            if (!peer) return;
+            connection = peer.connect(roomId);
+            setupConnectionListeners();
+        }
+
+        document.getElementById('btn-join-room').addEventListener('click', () => {
+            const roomVal = document.getElementById('input-room-id').value.trim();
+            if (roomVal) connectToRoom(roomVal);
+        });
+
+        document.getElementById('btn-connect-modal').addEventListener('click', () => {
+            modal.classList.remove('hidden');
+        });
+
+        document.getElementById('btn-close-modal').addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+
+        document.getElementById('btn-exit-receiver').addEventListener('click', () => {
+            document.getElementById('host-tester-screen').classList.add('hidden');
+            isHost = false;
+        });
+
+        const allBtnKeys = ['BTN_A', 'BTN_B', 'BTN_X', 'BTN_Y', 'DPAD_UP', 'DPAD_DOWN', 'DPAD_LEFT', 'DPAD_RIGHT', 'L1', 'R1', 'L2', 'R2', 'SELECT', 'START', 'HOME'];
+
+        function buildHostButtonsGrid() {
+            const grid = document.getElementById('host-buttons-grid');
+            grid.innerHTML = '';
+            allBtnKeys.forEach(k => {
+                const el = document.createElement('div');
+                el.id = `host-btn-${k}`;
+                el.className = 'bg-slate-800 border border-slate-700 p-2 rounded-lg text-center text-slate-500';
+                el.textContent = k;
+                grid.appendChild(el);
+            });
+        }
+
+        function updateHostTesterUI(data) {
+            if (!data.buttons) return;
+
+            // Responder ao Ping de Teste
+            if (data.type === 'PING' && connection) {
+                connection.send({ type: 'PONG', timestamp: data.timestamp });
+                return;
+            }
+
+            allBtnKeys.forEach(k => {
+                const el = document.getElementById(`host-btn-${k}`);
+                if (el) {
+                    if (data.buttons[k]) {
+                        el.className = 'bg-blue-600 text-white font-bold p-2 rounded-lg text-center shadow-lg shadow-blue-500/50';
+                    } else {
+                        el.className = 'bg-slate-800 border border-slate-700 p-2 rounded-lg text-center text-slate-500';
+                    }
+                }
+            });
+
+            const avatar = document.getElementById('player-avatar');
+            if (avatar && data.axes && data.axes.L3) {
+                const posX = data.axes.L3.x * 100;
+                const posY = data.axes.L3.y * 100;
+                avatar.style.transform = `translate(${posX}px, ${posY}px)`;
+            }
+        }
+
+        document.getElementById('btn-fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen().catch(() => {});
+            }
+        });
+    </script>
+</body>
+</html>
