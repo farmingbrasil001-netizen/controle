@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Light Forte - Mini Battle Royale & Web Deck</title>
+    <title>Light Forte - 4-Player QR Web Deck Hub</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- PeerJS para Conexão P2P via Código de Sala -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- QRCode.js para Geração Local Instantânea de QR Codes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     
     <style>
         * {
@@ -29,13 +31,12 @@
             width: 100vw;
         }
 
-        /* Temas e Estilo PlayStation / Xbox Glow */
         .hub-bg {
             background: radial-gradient(circle at center, #111827 0%, #030712 100%);
         }
 
         .ps-card {
-            background: rgba(17, 24, 39, 0.7);
+            background: rgba(17, 24, 39, 0.75);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
@@ -44,8 +45,8 @@
 
         .ps-card:hover {
             border-color: #3b82f6;
-            transform: translateY(-4px) scale(1.02);
-            box-shadow: 0 15px 35px rgba(59, 130, 246, 0.3);
+            transform: translateY(-4px) scale(1.01);
+            box-shadow: 0 15px 35px rgba(59, 130, 246, 0.25);
         }
 
         .btn-gamepad {
@@ -60,16 +61,6 @@
             box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
         }
 
-        .dpad-btn {
-            background: linear-gradient(145deg, #1f2937, #111827);
-            box-shadow: inset 0 1px 2px rgba(255,255,255,0.1), 0 3px 6px rgba(0,0,0,0.6);
-        }
-
-        .dpad-btn:active, .dpad-btn.active {
-            background: #3b82f6;
-            box-shadow: 0 0 12px #3b82f6;
-        }
-
         .joystick-base {
             background: radial-gradient(circle, #0f172a 40%, #1e293b 100%);
             box-shadow: inset 0 4px 10px rgba(0,0,0,0.9), 0 0 0 2px rgba(255,255,255,0.05);
@@ -80,52 +71,39 @@
             box-shadow: 0 6px 14px rgba(0,0,0,0.7), inset 0 2px 3px rgba(255,255,255,0.4);
         }
 
-        /* Animação Neon Cyberpunk */
-        @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
-            50% { box-shadow: 0 0 30px rgba(147, 51, 234, 0.7); }
-        }
-
-        .neon-glow {
-            animation: pulse-glow 3s infinite;
+        /* Estilo para contêineres de QR Code */
+        .qrcode-container img, .qrcode-container canvas {
+            margin: 0 auto;
+            border-radius: 12px;
+            padding: 6px;
+            background: white;
         }
     </style>
 </head>
 <body class="hub-bg flex flex-col justify-between h-screen w-screen overflow-hidden select-none">
 
     <script>
-        /* SÍNTESE DE ÁUDIO WEB AUDIO API - SEM LINKS EXTERNOS */
         class SoundEngine {
-            constructor() {
-                this.ctx = null;
-            }
+            constructor() { this.ctx = null; }
 
             init() {
-                if (!this.ctx) {
-                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-                }
-                if (this.ctx.state === 'suspended') {
-                    this.ctx.resume();
-                }
+                if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
             }
 
-            // Som de Inicialização Estilo PlayStation / Xbox Console
             playConsoleBoot() {
                 this.init();
                 const now = this.ctx.currentTime;
-                
-                // Low Bass Drone
                 const osc1 = this.ctx.createOscillator();
                 const gain1 = this.ctx.createGain();
                 osc1.type = 'sine';
-                osc1.frequency.setValueAtTime(55, now); // A1
+                osc1.frequency.setValueAtTime(55, now);
                 osc1.frequency.exponentialRampToValueAtTime(110, now + 2);
                 gain1.gain.setValueAtTime(0.01, now);
                 gain1.gain.linearRampToValueAtTime(0.3, now + 0.8);
                 gain1.gain.exponentialRampToValueAtTime(0.001, now + 3.5);
 
-                // Heavenly Chime Synth
-                [440, 554.37, 659.25, 880, 1108.73].forEach((freq, idx) => {
+                [440, 554.37, 659.25, 880].forEach((freq, idx) => {
                     const osc = this.ctx.createOscillator();
                     const gain = this.ctx.createGain();
                     osc.type = 'triangle';
@@ -133,20 +111,14 @@
                     gain.gain.setValueAtTime(0.001, now + 0.2 + (idx * 0.1));
                     gain.gain.linearRampToValueAtTime(0.08, now + 0.4 + (idx * 0.1));
                     gain.gain.exponentialRampToValueAtTime(0.0001, now + 3.0);
-                    
-                    osc.connect(gain);
-                    gain.connect(this.ctx.destination);
-                    osc.start(now + 0.2 + (idx * 0.1));
-                    osc.stop(now + 3.2);
+                    osc.connect(gain); gain.connect(this.ctx.destination);
+                    osc.start(now + 0.2 + (idx * 0.1)); osc.stop(now + 3.2);
                 });
 
-                osc1.connect(gain1);
-                gain1.connect(this.ctx.destination);
-                osc1.start(now);
-                osc1.stop(now + 3.5);
+                osc1.connect(gain1); gain1.connect(this.ctx.destination);
+                osc1.start(now); osc1.stop(now + 3.5);
             }
 
-            // Som de Seleção no Menu
             playMenuClick() {
                 this.init();
                 const now = this.ctx.currentTime;
@@ -157,13 +129,10 @@
                 osc.frequency.exponentialRampToValueAtTime(400, now + 0.05);
                 gain.gain.setValueAtTime(0.1, now);
                 gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.05);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(now); osc.stop(now + 0.05);
             }
 
-            // Som de Tiro de Rifle
             playGunshot() {
                 this.init();
                 const now = this.ctx.currentTime;
@@ -174,30 +143,10 @@
                 osc.frequency.exponentialRampToValueAtTime(40, now + 0.12);
                 gain.gain.setValueAtTime(0.2, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.12);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(now); osc.stop(now + 0.12);
             }
 
-            // Som de Escopeta
-            playShotgun() {
-                this.init();
-                const now = this.ctx.currentTime;
-                const osc = this.ctx.createOscillator();
-                const gain = this.ctx.createGain();
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(180, now);
-                osc.frequency.exponentialRampToValueAtTime(20, now + 0.25);
-                gain.gain.setValueAtTime(0.3, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.25);
-            }
-
-            // Som de Dano / Hit Marker
             playHit() {
                 this.init();
                 const now = this.ctx.currentTime;
@@ -205,16 +154,12 @@
                 const gain = this.ctx.createGain();
                 osc.type = 'sine';
                 osc.frequency.setValueAtTime(1200, now);
-                osc.frequency.setValueAtTime(1600, now + 0.03);
                 gain.gain.setValueAtTime(0.08, now);
                 gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.08);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(now); osc.stop(now + 0.08);
             }
 
-            // Som de Construção de Parede
             playBuild() {
                 this.init();
                 const now = this.ctx.currentTime;
@@ -225,17 +170,14 @@
                 osc.frequency.exponentialRampToValueAtTime(450, now + 0.1);
                 gain.gain.setValueAtTime(0.15, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.1);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(now); osc.stop(now + 0.1);
             }
         }
 
         const audio = new SoundEngine();
     </script>
 
-    <!-- BARRA NAVEGAÇÃO SUPERIOR -->
     <header class="w-full bg-slate-900/90 border-b border-slate-800 p-3 flex items-center justify-between z-40 backdrop-blur-md">
         <div class="flex items-center space-x-3">
             <button id="btn-home-hub" class="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded-xl flex items-center justify-center font-bold shadow-lg shadow-blue-500/30">
@@ -244,69 +186,71 @@
             <div>
                 <h1 class="text-sm font-bold tracking-wider text-slate-100 uppercase flex items-center gap-2">
                     <span>Light Forte</span>
-                    <span class="bg-blue-500/20 text-blue-400 text-[10px] px-2 py-0.5 rounded-full border border-blue-500/30">v2.0 Hub</span>
+                    <span class="bg-blue-500/20 text-blue-400 text-[10px] px-2 py-0.5 rounded-full border border-blue-500/30">v3.0 4-QR Deck</span>
                 </h1>
-                <p id="net-status" class="text-[11px] text-slate-400 font-medium">Modo Solo / Aguardando Conexão</p>
+                <p id="net-status" class="text-[11px] text-slate-400 font-medium">Escolha seu modo no Hub</p>
             </div>
         </div>
 
         <div class="flex items-center gap-2">
             <span id="room-code-badge" class="hidden bg-slate-800 border border-slate-700 text-blue-400 font-mono font-bold text-xs px-3 py-1.5 rounded-xl shadow-inner">
-                CÓDIGO: <span id="display-room-code">----</span>
+                SALA: <span id="display-room-code">----</span>
             </span>
+            <button id="btn-toggle-qr-modal" class="hidden bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-purple-600/30">
+                <i class="fa-solid fa-qrcode"></i> 4 QR Codes
+            </button>
             <button id="btn-fullscreen" class="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2.5 rounded-xl text-xs border border-slate-700 transition">
                 <i class="fa-solid fa-expand"></i>
             </button>
         </div>
     </header>
 
-    <!-- TELA 1: HUB PRINCIPAL (ESTILO PLAYSTATION / XBOX LAUNCHER) -->
     <section id="screen-hub" class="flex-1 flex flex-col items-center justify-center p-4 z-30 max-w-5xl mx-auto w-full">
         <div class="text-center mb-8">
             <div class="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs px-4 py-1.5 rounded-full font-semibold mb-3">
-                <i class="fa-solid fa-sparkles"></i> Escolha como deseja jogar agora
+                <i class="fa-solid fa-qrcode"></i> Conecte até 4 Celulares Escaneando QR Codes Na Tela
             </div>
-            <h2 class="text-3xl sm:text-5xl font-black text-white tracking-tight">GAME & DECK ECOSYSTEM</h2>
-            <p class="text-slate-400 text-sm sm:text-base mt-2 max-w-xl mx-auto">Jogue o Mini Battle Royale <strong>Light Forte</strong> na tela do PC ou transforme seu celular em um Controle Virtual P2P!</p>
+            <h2 class="text-3xl sm:text-5xl font-black text-white tracking-tight">LIGHT FORTE MULTIPLAYER</h2>
+            <p class="text-slate-400 text-sm sm:text-base mt-2 max-w-xl mx-auto">Abra no PC para exibir os <strong>4 QR Codes</strong>. Cada jogador escaneia o seu e controla pelo celular sem digitar nada!</p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
-            <!-- Opção 1: Jogar Light Forte no PC (Host) -->
-            <div id="card-play-pc" class="ps-card rounded-2xl p-6 flex flex-col justify-between cursor-pointer group">
+            <!-- Opção 1: Jogar e Exibir 4 QR Codes no PC -->
+            <div id="card-play-pc" class="ps-card rounded-2xl p-6 flex flex-col justify-between cursor-pointer group border-blue-500/40">
                 <div>
                     <div class="w-12 h-12 bg-blue-600/20 rounded-xl flex items-center justify-center text-blue-400 text-2xl mb-4 group-hover:scale-110 transition">
                         <i class="fa-solid fa-desktop"></i>
                     </div>
-                    <h3 class="text-xl font-bold text-white mb-2">PC / Monitor</h3>
-                    <p class="text-xs text-slate-400 leading-relaxed">Abre a arena do jogo <strong>Light Forte</strong> em tela cheia no PC. Gera o <strong>Código de Sala</strong> para conectar celulares ou amigos!</p>
+                    <h3 class="text-xl font-bold text-white mb-2">PC Lobby (4 QR Codes)</h3>
+                    <p class="text-xs text-slate-400 leading-relaxed">Mostra a arena na tela do PC e gera <strong>4 QR Codes</strong> (P1, P2, P3 e P4) para os amigos escanearem direto na câmera do celular!</p>
                 </div>
                 <button class="mt-6 w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-xs transition shadow-lg shadow-blue-600/30">
-                    Iniciar na Tela <i class="fa-solid fa-arrow-right ml-1"></i>
+                    Iniciar Tela do PC <i class="fa-solid fa-qrcode ml-1"></i>
                 </button>
             </div>
 
-            <!-- Opção 2: Conectar como Controle Mobile (Gamepad) -->
+            <!-- Opção 2: Entrar Digitando Código Manualmente -->
             <div id="card-controller-mode" class="ps-card rounded-2xl p-6 flex flex-col justify-between cursor-pointer group border-purple-500/30">
                 <div>
                     <div class="w-12 h-12 bg-purple-600/20 rounded-xl flex items-center justify-center text-purple-400 text-2xl mb-4 group-hover:scale-110 transition">
-                        <i class="fa-solid fa-mobile-screen-button"></i>
+                        <i class="fa-solid fa-keyboard"></i>
                     </div>
-                    <h3 class="text-xl font-bold text-white mb-2">Modo Controle</h3>
-                    <p class="text-xs text-slate-400 leading-relaxed">Transforma seu celular em um controle tático completo. Digite o <strong>Código da Sala</strong> do PC para pilotar!</p>
+                    <h3 class="text-xl font-bold text-white mb-2">Entrar com Código</h3>
+                    <p class="text-xs text-slate-400 leading-relaxed">Prefere digitar? Digite o código de 5 letras da sala do PC para se conectar manualmente como controle.</p>
                 </div>
                 <button class="mt-6 w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2.5 rounded-xl text-xs transition shadow-lg shadow-purple-600/30">
-                    Virar Controle <i class="fa-solid fa-gamepad ml-1"></i>
+                    Digite o Código <i class="fa-solid fa-gamepad ml-1"></i>
                 </button>
             </div>
 
-            <!-- Opção 3: Solo / Treino Rápido no Celular -->
+            <!-- Opção 3: Solo Treino no Dispositivo Atual -->
             <div id="card-solo-mode" class="ps-card rounded-2xl p-6 flex flex-col justify-between cursor-pointer group">
                 <div>
                     <div class="w-12 h-12 bg-emerald-600/20 rounded-xl flex items-center justify-center text-emerald-400 text-2xl mb-4 group-hover:scale-110 transition">
                         <i class="fa-solid fa-robot"></i>
                     </div>
-                    <h3 class="text-xl font-bold text-white mb-2">Solo Vs Bots</h3>
-                    <p class="text-xs text-slate-400 leading-relaxed">Jogue direto no dispositivo atual com controles na tela ou teclado/mouse contra Bots com IA.</p>
+                    <h3 class="text-xl font-bold text-white mb-2">Modo Solo / Bots</h3>
+                    <p class="text-xs text-slate-400 leading-relaxed">Jogue solo no dispositivo atual contra Bots com Inteligência Artificial usando teclado/mouse ou botões touch.</p>
                 </div>
                 <button class="mt-6 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl text-xs transition shadow-lg shadow-emerald-600/30">
                     Jogar Solo <i class="fa-solid fa-play ml-1"></i>
@@ -315,65 +259,74 @@
         </div>
     </section>
 
-    <!-- TELA 2: ARENA DO JOGO "LIGHT FORTE" (CANVAS 2D/3D SIMULADO) -->
     <section id="screen-game" class="flex-1 relative w-full h-full hidden overflow-hidden">
-        <!-- Canvas principal do jogo -->
         <canvas id="gameCanvas" class="w-full h-full block bg-slate-950"></canvas>
 
-        <!-- UI DO JOGO (HUD) -->
-        <div class="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none z-10">
-            <!-- Barra de Vida e Escudo Jogador 1 -->
-            <div class="bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-slate-700/60 min-w-[200px]">
-                <div class="flex items-center justify-between text-xs font-bold mb-1">
-                    <span class="text-blue-400 flex items-center gap-1"><i class="fa-solid fa-user"></i> Jogador 1</span>
+        <!-- HUD DE 4 JOGADORES -->
+        <div class="absolute top-3 left-3 right-3 grid grid-cols-2 md:grid-cols-4 gap-2 pointer-events-none z-10">
+            <!-- JOGADOR 1 (AZUL) -->
+            <div id="p1-hud" class="bg-slate-900/80 backdrop-blur-md p-2.5 rounded-2xl border border-blue-500/40">
+                <div class="flex items-center justify-between text-[11px] font-bold mb-1">
+                    <span class="text-blue-400 flex items-center gap-1"><i class="fa-solid fa-user"></i> P1 (Azul)</span>
                     <span id="p1-score" class="text-slate-400">Kills: 0</span>
                 </div>
-                <!-- Escudo -->
-                <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden mb-1 border border-slate-700">
+                <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-1">
                     <div id="p1-shield-bar" class="h-full bg-sky-400 transition-all duration-200" style="width: 100%;"></div>
                 </div>
-                <!-- Vida -->
-                <div class="w-full h-3.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
-                    <div id="p1-hp-bar" class="h-full bg-emerald-500 transition-all duration-200" style="width: 100%;"></div>
+                <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div id="p1-hp-bar" class="h-full bg-blue-500 transition-all duration-200" style="width: 100%;"></div>
                 </div>
             </div>
 
-            <!-- Info da Arma Selecionada -->
-            <div class="bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-slate-700/60 flex items-center gap-3">
-                <div class="text-right">
-                    <div id="weapon-name" class="text-xs font-extrabold text-amber-400 uppercase">RIFLE DE ASSALTO</div>
-                    <div id="weapon-ammo" class="text-[10px] font-mono text-slate-400">MUNIÇÃO: ∞</div>
+            <!-- JOGADOR 2 (ROXO) -->
+            <div id="p2-hud" class="bg-slate-900/80 backdrop-blur-md p-2.5 rounded-2xl border border-purple-500/40 opacity-50">
+                <div class="flex items-center justify-between text-[11px] font-bold mb-1">
+                    <span class="text-purple-400 flex items-center gap-1"><i class="fa-solid fa-user"></i> P2 (Roxo)</span>
+                    <span id="p2-score" class="text-slate-400">Aguardando...</span>
                 </div>
-                <div id="weapon-icon" class="w-9 h-9 bg-amber-500/20 text-amber-400 rounded-xl flex items-center justify-center text-lg">
-                    <i class="fa-solid fa-gun"></i>
+                <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-1">
+                    <div id="p2-shield-bar" class="h-full bg-purple-300 transition-all duration-200" style="width: 100%;"></div>
+                </div>
+                <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div id="p2-hp-bar" class="h-full bg-purple-500 transition-all duration-200" style="width: 100%;"></div>
                 </div>
             </div>
 
-            <!-- Barra de Vida e Escudo Jogador 2 (Multiplayer) -->
-            <div id="p2-hud" class="bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-slate-700/60 min-w-[200px] hidden">
-                <div class="flex items-center justify-between text-xs font-bold mb-1">
-                    <span class="text-purple-400 flex items-center gap-1"><i class="fa-solid fa-user-ninja"></i> Jogador 2</span>
-                    <span id="p2-score" class="text-slate-400">Kills: 0</span>
+            <!-- JOGADOR 3 (VERDE) -->
+            <div id="p3-hud" class="bg-slate-900/80 backdrop-blur-md p-2.5 rounded-2xl border border-emerald-500/40 opacity-50">
+                <div class="flex items-center justify-between text-[11px] font-bold mb-1">
+                    <span class="text-emerald-400 flex items-center gap-1"><i class="fa-solid fa-user"></i> P3 (Verde)</span>
+                    <span id="p3-score" class="text-slate-400">Aguardando...</span>
                 </div>
-                <!-- Escudo -->
-                <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden mb-1 border border-slate-700">
-                    <div id="p2-shield-bar" class="h-full bg-purple-400 transition-all duration-200" style="width: 100%;"></div>
+                <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-1">
+                    <div id="p3-shield-bar" class="h-full bg-emerald-300 transition-all duration-200" style="width: 100%;"></div>
                 </div>
-                <!-- Vida -->
-                <div class="w-full h-3.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
-                    <div id="p2-hp-bar" class="h-full bg-rose-500 transition-all duration-200" style="width: 100%;"></div>
+                <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div id="p3-hp-bar" class="h-full bg-emerald-500 transition-all duration-200" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <!-- JOGADOR 4 (VERMELHO) -->
+            <div id="p4-hud" class="bg-slate-900/80 backdrop-blur-md p-2.5 rounded-2xl border border-rose-500/40 opacity-50">
+                <div class="flex items-center justify-between text-[11px] font-bold mb-1">
+                    <span class="text-rose-400 flex items-center gap-1"><i class="fa-solid fa-user"></i> P4 (Vermelho)</span>
+                    <span id="p4-score" class="text-slate-400">Aguardando...</span>
+                </div>
+                <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-1">
+                    <div id="p4-shield-bar" class="h-full bg-rose-300 transition-all duration-200" style="width: 100%;"></div>
+                </div>
+                <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div id="p4-hp-bar" class="h-full bg-rose-500 transition-all duration-200" style="width: 100%;"></div>
                 </div>
             </div>
         </div>
 
-        <!-- Controles Virtuais Sobrepostos (Quando em Modo Solo no celular) -->
+        <!-- Touch Controls Overlaid (For On-Screen Mobile Solo) -->
         <div id="overlay-touch-controls" class="absolute bottom-4 left-4 right-4 flex justify-between items-end pointer-events-auto z-20 md:hidden">
-            <!-- Joystick Esquerdo (Mover) -->
             <div id="game-joystick-base" class="joystick-base w-28 h-28 rounded-full relative flex items-center justify-center">
                 <div id="game-joystick-stick" class="joystick-stick w-14 h-14 rounded-full absolute"></div>
             </div>
 
-            <!-- Botão de Construir e Atirar -->
             <div class="flex gap-2">
                 <button id="btn-game-build" class="w-14 h-14 bg-amber-600/80 hover:bg-amber-500 active:scale-95 text-white rounded-2xl font-bold flex flex-col items-center justify-center shadow-lg border border-amber-400/40 backdrop-blur-sm">
                     <i class="fa-solid fa-shield-halved text-lg"></i>
@@ -391,60 +344,58 @@
         </div>
     </section>
 
-    <!-- TELA 3: CONTROLE VIRTUAL DECK (QUANDO O CELULAR É O CONTROLE) -->
-    <section id="screen-controller" class="flex-1 flex flex-col justify-end pb-4 px-2 sm:px-6 w-full max-w-7xl mx-auto hidden">
-        <!-- BARRA SUPERIOR DE BOTÕES L1/L2 e R1/R2 -->
-        <div class="w-full flex justify-between px-2 mb-3">
+    <section id="screen-controller" class="flex-1 flex flex-col justify-between p-3 sm:p-6 w-full max-w-7xl mx-auto hidden">
+        <!-- Identificação do Jogador no Controle -->
+        <div class="w-full flex justify-between items-center bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-slate-700">
+            <div class="flex items-center gap-3">
+                <div id="deck-player-badge" class="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center font-black text-white text-sm shadow-md">
+                    P1
+                </div>
+                <div>
+                    <h4 id="deck-player-name" class="text-xs font-bold text-white uppercase">JOGADOR 1 (AZUL)</h4>
+                    <p class="text-[10px] text-emerald-400 font-mono">🟢 CONTROLE CONECTADO</p>
+                </div>
+            </div>
+            <button data-btn="BUILD" class="btn-gamepad h-10 px-3 rounded-xl text-xs font-extrabold text-amber-400 border border-amber-500/40 flex items-center gap-1.5 shadow-lg">
+                <i class="fa-solid fa-cubes"></i> PAREDE
+            </button>
+        </div>
+
+        <!-- Botões Superiores L1/L2 e R1/R2 -->
+        <div class="w-full flex justify-between my-2">
             <div class="flex gap-2">
-                <button data-btn="L2" class="btn-gamepad h-12 w-20 rounded-t-xl text-xs font-bold text-slate-300 border-t-2 border-slate-500 flex flex-col items-center justify-center">
+                <button data-btn="L2" class="btn-gamepad h-12 w-20 rounded-xl text-xs font-bold text-slate-300 border-t-2 border-slate-500 flex flex-col items-center justify-center">
                     <span>L2 (MIRA)</span>
                 </button>
-                <button data-btn="L1" class="btn-gamepad h-12 w-20 rounded-t-lg text-xs font-bold text-slate-300 border-t-2 border-slate-400 flex items-center justify-center">
+                <button data-btn="L1" class="btn-gamepad h-12 w-20 rounded-xl text-xs font-bold text-slate-300 border-t-2 border-slate-400 flex items-center justify-center">
                     L1 (ARMA)
                 </button>
             </div>
 
-            <div class="flex gap-2 items-center">
-                <button data-btn="BUILD" class="btn-gamepad h-10 px-3 rounded-xl text-xs font-extrabold text-amber-400 border border-amber-500/40 flex items-center gap-1.5 shadow-lg">
-                    <i class="fa-solid fa-cubes"></i> MODO PAREDE
-                </button>
-            </div>
-
             <div class="flex gap-2">
-                <button data-btn="R1" class="btn-gamepad h-12 w-20 rounded-t-lg text-xs font-bold text-slate-300 border-t-2 border-slate-400 flex items-center justify-center">
+                <button data-btn="R1" class="btn-gamepad h-12 w-20 rounded-xl text-xs font-bold text-slate-300 border-t-2 border-slate-400 flex items-center justify-center">
                     R1 (TROCAR)
                 </button>
-                <button data-btn="R2" class="btn-gamepad h-12 w-20 rounded-t-xl text-xs font-bold text-rose-400 border-t-2 border-rose-500 flex flex-col items-center justify-center">
+                <button data-btn="R2" class="btn-gamepad h-12 w-20 rounded-xl text-xs font-bold text-rose-400 border-t-2 border-rose-500 flex flex-col items-center justify-center shadow-rose-600/30">
                     <span>R2 (ATIRAR)</span>
                 </button>
             </div>
         </div>
 
-        <!-- PAINEL PRINCIPAL DE ANALÓGICOS E BOTÕES DE AÇÃO -->
-        <div class="grid grid-cols-2 gap-4 w-full items-center">
-            <!-- LADO ESQUERDO: ANALÓGICO L3 (MOVIMENTO) + D-PAD -->
-            <div class="flex items-center justify-start gap-4">
-                <div id="deck-left-base" class="joystick-base w-32 h-32 sm:w-36 sm:h-36 rounded-full relative flex items-center justify-center flex-shrink-0">
-                    <div id="deck-left-stick" class="joystick-stick w-16 h-16 rounded-full absolute flex items-center justify-center text-[10px] text-white/50 font-bold">
+        <!-- Analógicos e Botões de Ação ABXY -->
+        <div class="grid grid-cols-2 gap-4 w-full items-center my-auto">
+            <!-- Analógico de Movimento Esquerdo -->
+            <div class="flex items-center justify-start">
+                <div id="deck-left-base" class="joystick-base w-32 h-32 sm:w-40 sm:h-40 rounded-full relative flex items-center justify-center flex-shrink-0">
+                    <div id="deck-left-stick" class="joystick-stick w-16 h-16 sm:w-20 sm:h-20 rounded-full absolute flex items-center justify-center text-[10px] text-white/50 font-bold">
                         MOVER
                     </div>
                 </div>
-
-                <!-- D-Pad Simplificado -->
-                <div class="relative w-28 h-28 hidden sm:block">
-                    <button data-btn="DPAD_UP" class="dpad-btn absolute top-0 left-1/2 -translate-x-1/2 w-9 h-10 rounded-t-lg text-slate-300 flex items-center justify-center">
-                        <i class="fa-solid fa-caret-up"></i>
-                    </button>
-                    <button data-btn="DPAD_DOWN" class="dpad-btn absolute bottom-0 left-1/2 -translate-x-1/2 w-9 h-10 rounded-b-lg text-slate-300 flex items-center justify-center">
-                        <i class="fa-solid fa-caret-down"></i>
-                    </button>
-                </div>
             </div>
 
-            <!-- LADO DIREITO: ANALÓGICO R3 (MIRA/DIREÇÃO) + BOTÕES ABXY -->
-            <div class="flex items-center justify-end gap-4">
-                <!-- Botões de Ação ABXY -->
-                <div class="relative w-32 h-32 flex-shrink-0">
+            <!-- Botões ABXY + Direcionais -->
+            <div class="flex items-center justify-end gap-3">
+                <div class="relative w-32 h-32 sm:w-36 sm:h-36 flex-shrink-0">
                     <button data-btn="BTN_Y" class="btn-gamepad absolute top-0 left-1/2 -translate-x-1/2 w-11 h-11 rounded-full font-bold text-emerald-400 text-sm flex items-center justify-center">
                         Y
                     </button>
@@ -458,68 +409,119 @@
                         B
                     </button>
                 </div>
-
-                <div id="deck-right-base" class="joystick-base w-32 h-32 sm:w-36 sm:h-36 rounded-full relative flex items-center justify-center flex-shrink-0">
-                    <div id="deck-right-stick" class="joystick-stick w-16 h-16 rounded-full absolute flex items-center justify-center text-[10px] text-white/50 font-bold">
-                        MIRAR
-                    </div>
-                </div>
             </div>
         </div>
     </section>
 
-    <!-- MODAL DE CONEXÃO POR CÓDIGO DE SALA -->
+    <div id="qr-codes-modal" class="fixed inset-0 bg-black/85 backdrop-blur-xl z-50 flex items-center justify-center p-4 overflow-y-auto hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-4xl w-full p-6 text-center shadow-2xl relative my-auto">
+            <button id="btn-close-qr-modal" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl p-2">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <div class="inline-flex items-center gap-2 bg-purple-500/20 text-purple-400 border border-purple-500/30 px-3 py-1 rounded-full text-xs font-bold mb-2">
+                <i class="fa-solid fa-qrcode"></i> LOBBY MULTIPLAYER 4 JOGADORES
+            </div>
+
+            <h3 class="text-2xl font-black text-white">Escaneie o QR Code do seu Jogador</h3>
+            <p class="text-xs text-slate-400 mb-6">Abra a câmera do celular de cada pessoa para virar o controle correspondente:</p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <!-- QR JOGADOR 1 -->
+                <div class="bg-slate-800/80 border border-blue-500/40 p-4 rounded-2xl flex flex-col items-center">
+                    <span class="text-xs font-black text-blue-400 mb-2 flex items-center gap-1">
+                        <i class="fa-solid fa-user"></i> JOGADOR 1
+                    </span>
+                    <div id="qrcode-p1" class="qrcode-container mb-3 min-h-[130px] flex items-center justify-center"></div>
+                    <span id="status-p1" class="text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full font-mono">
+                        Aguardando...
+                    </span>
+                </div>
+
+                <!-- QR JOGADOR 2 -->
+                <div class="bg-slate-800/80 border border-purple-500/40 p-4 rounded-2xl flex flex-col items-center">
+                    <span class="text-xs font-black text-purple-400 mb-2 flex items-center gap-1">
+                        <i class="fa-solid fa-user"></i> JOGADOR 2
+                    </span>
+                    <div id="qrcode-p2" class="qrcode-container mb-3 min-h-[130px] flex items-center justify-center"></div>
+                    <span id="status-p2" class="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-mono">
+                        Aguardando...
+                    </span>
+                </div>
+
+                <!-- QR JOGADOR 3 -->
+                <div class="bg-slate-800/80 border border-emerald-500/40 p-4 rounded-2xl flex flex-col items-center">
+                    <span class="text-xs font-black text-emerald-400 mb-2 flex items-center gap-1">
+                        <i class="fa-solid fa-user"></i> JOGADOR 3
+                    </span>
+                    <div id="qrcode-p3" class="qrcode-container mb-3 min-h-[130px] flex items-center justify-center"></div>
+                    <span id="status-p3" class="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">
+                        Aguardando...
+                    </span>
+                </div>
+
+                <!-- QR JOGADOR 4 -->
+                <div class="bg-slate-800/80 border border-rose-500/40 p-4 rounded-2xl flex flex-col items-center">
+                    <span class="text-xs font-black text-rose-400 mb-2 flex items-center gap-1">
+                        <i class="fa-solid fa-user"></i> JOGADOR 4
+                    </span>
+                    <div id="qrcode-p4" class="qrcode-container mb-3 min-h-[130px] flex items-center justify-center"></div>
+                    <span id="status-p4" class="text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded-full font-mono">
+                        Aguardando...
+                    </span>
+                </div>
+            </div>
+
+            <button id="btn-start-arena" class="mt-6 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold px-8 py-3 rounded-2xl text-sm transition shadow-lg shadow-emerald-600/30">
+                Iniciar Partida Agora <i class="fa-solid fa-play ml-1"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL DIGITAR CÓDIGO MANUALMENTE -->
     <div id="room-code-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
         <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 text-center shadow-2xl relative">
             <button id="btn-close-modal" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">
                 <i class="fa-solid fa-xmark"></i>
             </button>
-
             <div class="w-14 h-14 bg-blue-600/20 text-blue-400 rounded-2xl flex items-center justify-center text-2xl mx-auto mb-3">
                 <i class="fa-solid fa-key"></i>
             </div>
-
             <h3 class="text-xl font-extrabold text-white mb-1">Digitar Código da Sala</h3>
-            <p class="text-xs text-slate-400 mb-6">Digite o código de 5 letras exibido na barra do topo da tela do PC:</p>
-
+            <p class="text-xs text-slate-400 mb-6">Digite o código de 5 letras exibido na tela do PC:</p>
             <div class="space-y-4">
                 <input type="text" id="input-room-code" maxlength="5" placeholder="EX: A7K9P" class="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-center text-2xl font-mono font-black tracking-widest text-blue-400 uppercase focus:outline-none focus:ring-2 focus:ring-blue-500">
-
                 <button id="btn-submit-code" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-extrabold py-3 rounded-2xl text-sm transition shadow-lg shadow-blue-600/30">
-                    Conectar Agora
+                    Conectar Controle
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- MODAL ALERTA PERSONALIZADO (SEM ALERT() DO NAVEGADOR) -->
+    <!-- MODAL ALERTA PERSONALIZADO -->
     <div id="alert-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xs w-full p-5 text-center shadow-2xl">
             <h4 id="alert-title" class="text-base font-bold text-white mb-2">Aviso</h4>
             <p id="alert-msg" class="text-xs text-slate-300 mb-4">Mensagem aqui</p>
             <button id="btn-alert-ok" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl text-xs">
-                Entendido
+                OK
             </button>
         </div>
     </div>
 
     <script>
-        /* =========================================================================
-           LÓGICA DO JOGO "LIGHT FORTE" (MINI BATTLE ROYALE 2.5D CANVAS)
-           ========================================================================= */
-        
-        // Elementos de Navegação e Telas
         const screenHub = document.getElementById('screen-hub');
         const screenGame = document.getElementById('screen-game');
         const screenController = document.getElementById('screen-controller');
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Modais e Alertas
+        const qrModal = document.getElementById('qr-codes-modal');
         const roomModal = document.getElementById('room-code-modal');
         const alertModal = document.getElementById('alert-modal');
         const displayRoomCode = document.getElementById('display-room-code');
         const roomCodeBadge = document.getElementById('room-code-badge');
+        const btnToggleQrModal = document.getElementById('btn-toggle-qr-modal');
 
         function showAlert(title, msg) {
             document.getElementById('alert-title').textContent = title;
@@ -527,417 +529,281 @@
             alertModal.classList.remove('hidden');
         }
 
-        document.getElementById('btn-alert-ok').addEventListener('click', () => {
-            alertModal.classList.add('hidden');
-        });
+        document.getElementById('btn-alert-ok').addEventListener('click', () => alertModal.classList.add('hidden'));
 
-        // Estado do Jogo
         let gameRunning = false;
-        let myRole = 'HUB'; // 'PC_HOST', 'CONTROLLER', 'SOLO'
+        let myRole = 'HUB';
         let peer = null;
-        let peerConnection = null;
+        let activeConnections = {};
         let currentRoomCode = '';
+        let myPlayerIndex = 1;
 
-        // Objeto das Armas do Jogo
         const WEAPONS = {
-            RIFLE: { name: 'Rifle de Assalto', fireRate: 150, damage: 18, speed: 14, color: '#f59e0b', icon: 'fa-gun' },
-            SHOTGUN: { name: 'Escopeta Pesada', fireRate: 600, damage: 45, speed: 10, color: '#ef4444', icon: 'fa-burst' },
-            SNIPER: { name: 'Sniper de Precisão', fireRate: 1000, damage: 90, speed: 22, color: '#3b82f6', icon: 'fa-crosshair' }
+            RIFLE: { name: 'Rifle de Assalto', fireRate: 150, damage: 18, speed: 14, color: '#f59e0b' },
+            SHOTGUN: { name: 'Escopeta Pesada', fireRate: 600, damage: 45, speed: 10, color: '#ef4444' },
+            SNIPER: { name: 'Sniper', fireRate: 1000, damage: 90, speed: 22, color: '#3b82f6' }
         };
 
-        // Estado dos Jogadores
-        const player1 = {
-            x: 300, y: 300, radius: 18, speed: 4,
-            hp: 100, shield: 100, kills: 0,
-            angle: 0,
-            weaponKey: 'RIFLE',
-            lastShootTime: 0,
-            vx: 0, vy: 0
+        // Estado dos 4 Jogadores
+        const players = {
+            1: { x: 200, y: 200, radius: 18, speed: 4, hp: 100, shield: 100, kills: 0, angle: 0, weaponKey: 'RIFLE', lastShootTime: 0, vx: 0, vy: 0, color: '#3b82f6', active: true },
+            2: { x: 600, y: 200, radius: 18, speed: 4, hp: 100, shield: 100, kills: 0, angle: 0, weaponKey: 'RIFLE', lastShootTime: 0, vx: 0, vy: 0, color: '#a855f7', active: false },
+            3: { x: 200, y: 500, radius: 18, speed: 4, hp: 100, shield: 100, kills: 0, angle: 0, weaponKey: 'RIFLE', lastShootTime: 0, vx: 0, vy: 0, color: '#10b981', active: false },
+            4: { x: 600, y: 500, radius: 18, speed: 4, hp: 100, shield: 100, kills: 0, angle: 0, weaponKey: 'RIFLE', lastShootTime: 0, vx: 0, vy: 0, color: '#f43f5e', active: false }
         };
 
-        const player2 = {
-            x: 500, y: 300, radius: 18, speed: 4,
-            hp: 100, shield: 100, kills: 0,
-            angle: 0,
-            weaponKey: 'RIFLE',
-            lastShootTime: 0,
-            vx: 0, vy: 0,
-            active: false
-        };
-
-        // Entidades da Arena (Balas, Paredes, Bots, Drops)
         let bullets = [];
         let walls = [];
         let bots = [];
         let drops = [];
 
-        // Ajustar Tamanho do Canvas Responsivo
         function resizeCanvas() {
             canvas.width = screenGame.clientWidth || window.innerWidth;
             canvas.height = screenGame.clientHeight || window.innerHeight;
         }
-
         window.addEventListener('resize', resizeCanvas);
 
-        // Criar Bots Inimigos
-        function spawnBot() {
-            if (bots.length >= 5) return;
-            bots.push({
-                x: Math.random() * (canvas.width - 100) + 50,
-                y: Math.random() * (canvas.height - 100) + 50,
-                radius: 16,
-                hp: 60,
-                speed: 1.8,
-                angle: 0,
-                lastShoot: 0
-            });
-        }
-
-        // Criar Caixas de Suprimentos (Drops)
-        function spawnDrop() {
-            if (drops.length >= 3) return;
-            drops.push({
-                x: Math.random() * (canvas.width - 100) + 50,
-                y: Math.random() * (canvas.height - 100) + 50,
-                type: Math.random() > 0.5 ? 'SHIELD' : 'HEAL'
-            });
-        }
-
-        // Sistema de Disparo
-        function shoot(player, isP1 = true) {
+        function shoot(p, pIdx) {
             const now = Date.now();
-            const w = WEAPONS[player.weaponKey];
-            if (now - player.lastShootTime < w.fireRate) return;
+            const w = WEAPONS[p.weaponKey];
+            if (now - p.lastShootTime < w.fireRate) return;
+            p.lastShootTime = now;
+            audio.playGunshot();
 
-            player.lastShootTime = now;
-            
-            if (w.name.includes('Escopeta')) {
-                audio.playShotgun();
-                // 3 projéteis em leque
-                [-0.2, 0, 0.2].forEach(angleOffset => {
-                    bullets.push({
-                        x: player.x + Math.cos(player.angle) * 20,
-                        y: player.y + Math.sin(player.angle) * 20,
-                        vx: Math.cos(player.angle + angleOffset) * w.speed,
-                        vy: Math.sin(player.angle + angleOffset) * w.speed,
-                        damage: w.damage / 2,
-                        owner: isP1 ? 'P1' : 'P2',
-                        color: w.color
-                    });
-                });
-            } else {
-                audio.playGunshot();
-                bullets.push({
-                    x: player.x + Math.cos(player.angle) * 20,
-                    y: player.y + Math.sin(player.angle) * 20,
-                    vx: Math.cos(player.angle) * w.speed,
-                    vy: Math.sin(player.angle) * w.speed,
-                    damage: w.damage,
-                    owner: isP1 ? 'P1' : 'P2',
-                    color: w.color
-                });
-            }
+            bullets.push({
+                x: p.x + Math.cos(p.angle) * 20,
+                y: p.y + Math.sin(p.angle) * 20,
+                vx: Math.cos(p.angle) * w.speed,
+                vy: Math.sin(p.angle) * w.speed,
+                damage: w.damage,
+                owner: pIdx,
+                color: p.color
+            });
         }
 
-        // Construir Parede de Proteção estilo Fortnite
-        function buildWall(player) {
+        function buildWall(p) {
             audio.playBuild();
             const wallDist = 45;
             walls.push({
-                x: player.x + Math.cos(player.angle) * wallDist - 25,
-                y: player.y + Math.sin(player.angle) * wallDist - 25,
-                w: 50,
-                h: 50,
-                hp: 120
+                x: p.x + Math.cos(p.angle) * wallDist - 25,
+                y: p.y + Math.sin(p.angle) * wallDist - 25,
+                w: 50, h: 50, hp: 120
             });
         }
 
-        // LOOP PRINCIPAL DE RENDERIZAÇÃO DO JOGO
         function updateGame() {
             if (!gameRunning) return;
 
-            // 1. Atualizar Movimento do Player 1
-            player1.x += player1.vx * player1.speed;
-            player1.y += player1.vy * player1.speed;
+            // Atualizar os 4 Jogadores
+            for (let idx = 1; idx <= 4; idx++) {
+                const p = players[idx];
+                if (!p.active) continue;
+                p.x += p.vx * p.speed;
+                p.y += p.vy * p.speed;
+                p.x = Math.max(20, Math.min(canvas.width - 20, p.x));
+                p.y = Math.max(20, Math.min(canvas.height - 20, p.y));
 
-            // Limite de Tela
-            player1.x = Math.max(20, Math.min(canvas.width - 20, player1.x));
-            player1.y = Math.max(20, Math.min(canvas.height - 20, player1.y));
-
-            // 2. Atualizar Player 2 (se conectado)
-            if (player2.active) {
-                player2.x += player2.vx * player2.speed;
-                player2.y += player2.vy * player2.speed;
-                player2.x = Math.max(20, Math.min(canvas.width - 20, player2.x));
-                player2.y = Math.max(20, Math.min(canvas.height - 20, player2.y));
+                // Atualizar HUD
+                const hpBar = document.getElementById(`p${idx}-hp-bar`);
+                const shieldBar = document.getElementById(`p${idx}-shield-bar`);
+                const score = document.getElementById(`p${idx}-score`);
+                if (hpBar) hpBar.style.width = p.hp + '%';
+                if (shieldBar) shieldBar.style.width = p.shield + '%';
+                if (score) score.textContent = 'Kills: ' + p.kills;
             }
 
-            // 3. Atualizar Balas
+            // Atualizar Balas
             bullets.forEach((b, index) => {
                 b.x += b.vx;
                 b.y += b.vy;
 
-                // Colisão com Paredes
-                walls.forEach((wall, wIndex) => {
-                    if (b.x > wall.x && b.x < wall.x + wall.w && b.y > wall.y && b.y < wall.y + wall.h) {
-                        wall.hp -= b.damage;
+                walls.forEach((w, wIdx) => {
+                    if (b.x > w.x && b.x < w.x + w.w && b.y > w.y && b.y < w.y + w.h) {
+                        w.hp -= b.damage;
                         bullets.splice(index, 1);
-                        if (wall.hp <= 0) walls.splice(wIndex, 1);
+                        if (w.hp <= 0) walls.splice(wIdx, 1);
                     }
                 });
 
-                // Colisão com Bots Inimigos
-                bots.forEach((bot, botIndex) => {
-                    const dist = Math.hypot(b.x - bot.x, b.y - bot.y);
-                    if (dist < bot.radius + 4) {
+                // Colisão com Jogadores Adversários
+                for (let idx = 1; idx <= 4; idx++) {
+                    const p = players[idx];
+                    if (!p.active || b.owner === idx) continue;
+                    if (Math.hypot(b.x - p.x, b.y - p.y) < p.radius + 4) {
                         audio.playHit();
-                        bot.hp -= b.damage;
-                        bullets.splice(index, 1);
+                        if (p.shield > 0) p.shield = Math.max(0, p.shield - b.damage);
+                        else p.hp = Math.max(0, p.hp - b.damage);
 
-                        if (bot.hp <= 0) {
-                            bots.splice(botIndex, 1);
-                            if (b.owner === 'P1') player1.kills++;
-                            else if (b.owner === 'P2') player2.kills++;
+                        bullets.splice(index, 1);
+                        if (p.hp <= 0) {
+                            if (players[b.owner]) players[b.owner].kills++;
+                            p.hp = 100; p.shield = 100; // Respawn simples
                         }
                     }
-                });
-            });
-
-            // Limpar Balas Fora de Tela
-            bullets = bullets.filter(b => b.x > 0 && b.x < canvas.width && b.y > 0 && b.y < canvas.height);
-
-            // 4. Atualizar IA dos Bots
-            bots.forEach(bot => {
-                const target = player1;
-                const angle = Math.atan2(target.y - bot.y, target.x - bot.x);
-                bot.angle = angle;
-                bot.x += Math.cos(angle) * bot.speed;
-                bot.y += Math.sin(angle) * bot.speed;
-
-                // Atirar no jogador
-                if (Date.now() - bot.lastShoot > 1800) {
-                    bot.lastShoot = Date.now();
-                    bullets.push({
-                        x: bot.x, y: bot.y,
-                        vx: Math.cos(angle) * 7,
-                        vy: Math.sin(angle) * 7,
-                        damage: 12,
-                        owner: 'BOT',
-                        color: '#a855f7'
-                    });
                 }
             });
 
-            // 5. Coleta de Drops
-            drops.forEach((d, index) => {
-                [player1, player2].forEach(p => {
-                    if (Math.hypot(p.x - d.x, p.y - d.y) < p.radius + 15) {
-                        if (d.type === 'SHIELD') p.shield = Math.min(100, p.shield + 50);
-                        if (d.type === 'HEAL') p.hp = Math.min(100, p.hp + 40);
-                        drops.splice(index, 1);
-                        audio.playHit();
-                    }
-                });
-            });
+            bullets = bullets.filter(b => b.x > 0 && b.x < canvas.width && b.y > 0 && b.y < canvas.height);
 
-            // Spawns periódicos
-            if (Math.random() < 0.015) spawnBot();
-            if (Math.random() < 0.005) spawnDrop();
-
-            // Atualizar HUD do Jogador
-            document.getElementById('p1-hp-bar').style.width = player1.hp + '%';
-            document.getElementById('p1-shield-bar').style.width = player1.shield + '%';
-            document.getElementById('p1-score').textContent = 'Kills: ' + player1.kills;
-
-            if (player2.active) {
-                document.getElementById('p2-hp-bar').style.width = player2.hp + '%';
-                document.getElementById('p2-shield-bar').style.width = player2.shield + '%';
-                document.getElementById('p2-score').textContent = 'Kills: ' + player2.kills;
-            }
-
-            // RENDERIZAÇÃO GRÁFICA NO CANVAS
+            // Desenhar no Canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             // Grade do Chão
-            ctx.strokeStyle = '#1e293b';
-            ctx.lineWidth = 1;
-            const gridSize = 40;
-            for (let x = 0; x < canvas.width; x += gridSize) {
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += 40) {
                 ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
             }
-            for (let y = 0; y < canvas.height; y += gridSize) {
+            for (let y = 0; y < canvas.height; y += 40) {
                 ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
             }
 
-            // Desenhar Drops
-            drops.forEach(d => {
-                ctx.fillStyle = d.type === 'SHIELD' ? '#38bdf8' : '#22c55e';
-                ctx.beginPath(); ctx.arc(d.x, d.y, 10, 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = '#ffffff'; ctx.stroke();
-            });
-
-            // Desenhar Paredes
+            // Paredes
             walls.forEach(w => {
-                ctx.fillStyle = '#64748b';
-                ctx.fillRect(w.x, w.y, w.w, w.h);
-                ctx.strokeStyle = '#94a3b8';
-                ctx.strokeRect(w.x, w.y, w.w, w.h);
+                ctx.fillStyle = '#64748b'; ctx.fillRect(w.x, w.y, w.w, w.h);
+                ctx.strokeStyle = '#94a3b8'; ctx.strokeRect(w.x, w.y, w.w, w.h);
             });
 
-            // Desenhar Balas
+            // Balas
             bullets.forEach(b => {
                 ctx.fillStyle = b.color;
                 ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI * 2); ctx.fill();
             });
 
-            // Desenhar Bots
-            bots.forEach(bot => {
+            // Jogadores
+            for (let idx = 1; idx <= 4; idx++) {
+                const p = players[idx];
+                if (!p.active) continue;
                 ctx.save();
-                ctx.translate(bot.x, bot.y);
-                ctx.rotate(bot.angle);
-                ctx.fillStyle = '#a855f7';
-                ctx.beginPath(); ctx.arc(0, 0, bot.radius, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = '#000000';
-                ctx.fillRect(0, -3, 18, 6);
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.angle);
+                ctx.fillStyle = '#475569'; ctx.fillRect(0, -4, 22, 8);
+                ctx.fillStyle = p.color;
+                ctx.beginPath(); ctx.arc(0, 0, p.radius, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
                 ctx.restore();
-            });
-
-            // Desenhar Jogador 1 (Azul)
-            drawPlayer(player1, '#3b82f6');
-
-            // Desenhar Jogador 2 (Roxo - se ativo)
-            if (player2.active) {
-                drawPlayer(player2, '#a855f7');
             }
 
             requestAnimationFrame(updateGame);
         }
 
-        function drawPlayer(p, color) {
-            ctx.save();
-            ctx.translate(p.x, p.y);
-            ctx.rotate(p.angle);
-
-            // Cano da Arma
-            ctx.fillStyle = '#475569';
-            ctx.fillRect(0, -4, 22, 8);
-
-            // Corpo do Personagem
-            ctx.fillStyle = color;
-            ctx.beginPath(); ctx.arc(0, 0, p.radius, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
-
-            ctx.restore();
-        }
-
-        // Alternar Armas
-        function swapWeapon(p) {
-            const keys = Object.keys(WEAPONS);
-            let nextIndex = (keys.indexOf(p.weaponKey) + 1) % keys.length;
-            p.weaponKey = keys[nextIndex];
-            
-            const w = WEAPONS[p.weaponKey];
-            document.getElementById('weapon-name').textContent = w.name;
-            document.getElementById('weapon-icon').innerHTML = `<i class="fa-solid ${w.icon}"></i>`;
-            audio.playMenuClick();
-        }
-
-        /* =========================================================================
-           SISTEMA MULTIPLAYER E PAREAMENTO POR CÓDIGO DE SALA (5 DIGITOS)
-           ========================================================================= */
-
         function generateShortCode() {
             const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
             let code = '';
-            for (let i = 0; i < 5; i++) {
-                code += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
+            for (let i = 0; i < 5; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
             return code;
         }
 
-        // Iniciar Servidor PeerJS no PC (Host)
+        function render4QRCodes(roomCode) {
+            const baseUrl = window.location.href.split('?')[0];
+            const colors = ['#3b82f6', '#a855f7', '#10b981', '#f43f5e'];
+
+            for (let i = 1; i <= 4; i++) {
+                const container = document.getElementById(`qrcode-p${i}`);
+                container.innerHTML = '';
+                const qrUrl = `${baseUrl}?room=${roomCode}&player=${i}`;
+
+                new QRCode(container, {
+                    text: qrUrl,
+                    width: 120,
+                    height: 120,
+                    colorDark : colors[i-1],
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.H
+                });
+            }
+        }
+
         function initPCHost() {
             currentRoomCode = generateShortCode();
             displayRoomCode.textContent = currentRoomCode;
             roomCodeBadge.classList.remove('hidden');
+            btnToggleQrModal.classList.remove('hidden');
+
+            render4QRCodes(currentRoomCode);
+            qrModal.classList.remove('hidden');
 
             peer = new Peer('LF-' + currentRoomCode);
 
-            peer.on('open', (id) => {
-                document.getElementById('net-status').textContent = 'Aguardando Jogador 2 / Controle';
+            peer.on('open', () => {
+                document.getElementById('net-status').textContent = '4 QR Codes Prontos para Escanear!';
             });
 
             peer.on('connection', (conn) => {
-                peerConnection = conn;
-                document.getElementById('net-status').textContent = '🟢 Jogador 2 Conectado!';
-                audio.playConsoleBoot();
-                player2.active = true;
-                document.getElementById('p2-hud').classList.remove('hidden');
+                conn.on('open', () => {
+                    // Handshake inicial
+                    conn.on('data', (data) => {
+                        if (data.type === 'JOIN') {
+                            const pIdx = data.playerIndex || 2;
+                            activeConnections[pIdx] = conn;
+                            players[pIdx].active = true;
 
-                // Escutar Comandos do Controle
-                peerConnection.on('data', (data) => {
-                    handleControllerData(data);
+                            // Atualizar HUD e Modal
+                            document.getElementById(`p${pIdx}-hud`).classList.remove('opacity-50');
+                            document.getElementById(`p${pIdx}-score`).textContent = 'Kills: 0';
+                            document.getElementById(`status-p${pIdx}`).textContent = '🟢 CONECTADO!';
+                            document.getElementById(`status-p${pIdx}`).className = 'text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono font-bold';
+
+                            audio.playConsoleBoot();
+                        } else {
+                            // Comandos do Controle em Tempo Real
+                            const pIdx = data.pIdx || 1;
+                            const p = players[pIdx];
+                            if (data.axes && data.axes.L3) {
+                                p.vx = data.axes.L3.x;
+                                p.vy = data.axes.L3.y;
+                                if (p.vx !== 0 || p.vy !== 0) p.angle = Math.atan2(p.vy, p.vx);
+                            }
+                            if (data.buttons) {
+                                if (data.buttons.R2) shoot(p, pIdx);
+                                if (data.buttons.BUILD) buildWall(p);
+                            }
+                        }
+                    });
                 });
             });
         }
 
-        // Tratar Comandos Recebidos do Celular Controle
-        function handleControllerData(data) {
-            const targetPlayer = player2.active ? player2 : player1;
+        function connectAsController(roomCode, playerIndex) {
+            const cleanCode = roomCode.trim().toUpperCase();
+            myPlayerIndex = parseInt(playerIndex) || 1;
 
-            if (data.axes && data.axes.L3) {
-                targetPlayer.vx = data.axes.L3.x;
-                targetPlayer.vy = data.axes.L3.y;
-                if (data.axes.L3.x !== 0 || data.axes.L3.y !== 0) {
-                    targetPlayer.angle = Math.atan2(data.axes.L3.y, data.axes.L3.x);
-                }
-            }
-
-            if (data.buttons) {
-                if (data.buttons.R2) shoot(targetPlayer, !player2.active);
-                if (data.buttons.BUILD) buildWall(targetPlayer);
-                if (data.buttons.R1) swapWeapon(targetPlayer);
-            }
-        }
-
-        // Conectar Celular à Sala Usando o Código de 5 Letras
-        function connectToRoomCode(code) {
-            const cleanCode = code.trim().toUpperCase();
             peer = new Peer();
 
             peer.on('open', () => {
-                peerConnection = peer.connect('LF-' + cleanCode);
+                const conn = peer.connect('LF-' + cleanCode);
 
-                peerConnection.on('open', () => {
-                    roomModal.classList.add('hidden');
-                    audio.playConsoleBoot();
-                    
-                    // Transição para a tela de Controle
+                conn.on('open', () => {
+                    conn.send({ type: 'JOIN', playerIndex: myPlayerIndex });
+
+                    // Configurar UI do Controle no Celular
                     screenHub.classList.add('hidden');
                     screenController.classList.remove('hidden');
-                    document.getElementById('net-status').textContent = '🟢 Conectado à Sala: ' + cleanCode;
+                    
+                    const pColors = ['bg-blue-600', 'bg-purple-600', 'bg-emerald-600', 'bg-rose-600'];
+                    const pNames = ['JOGADOR 1 (AZUL)', 'JOGADOR 2 (ROXO)', 'JOGADOR 3 (VERDE)', 'JOGADOR 4 (VERMELHO)'];
+
+                    const badge = document.getElementById('deck-player-badge');
+                    badge.className = `w-8 h-8 rounded-xl ${pColors[myPlayerIndex-1]} flex items-center justify-center font-black text-white text-sm shadow-md`;
+                    badge.textContent = `P${myPlayerIndex}`;
+
+                    document.getElementById('deck-player-name').textContent = pNames[myPlayerIndex-1];
+                    document.getElementById('net-status').textContent = `🟢 Conectado ao PC como P${myPlayerIndex}`;
+                    audio.playConsoleBoot();
+
+                    // Loop de Envio dos Controles
+                    setInterval(() => {
+                        deckState.pIdx = myPlayerIndex;
+                        conn.send(deckState);
+                    }, 50);
                 });
 
-                peerConnection.on('error', (err) => {
-                    showAlert('Erro de Conexão', 'Não foi possível encontrar a sala com este código.');
+                conn.on('error', () => {
+                    showAlert('Erro de Conexão', 'Não foi possível se conectar à sala do PC.');
                 });
             });
         }
 
-        /* =========================================================================
-           CONTROLES TÁTEIS DO CELULAR (JOYSTICKS & BOTÕES)
-           ========================================================================= */
-
-        const deckState = {
-            axes: { L3: { x: 0, y: 0 }, R3: { x: 0, y: 0 } },
-            buttons: {}
-        };
-
-        function sendDeckState() {
-            if (peerConnection && peerConnection.open) {
-                peerConnection.send(deckState);
-            }
-        }
+        const deckState = { axes: { L3: { x: 0, y: 0 } }, buttons: {} };
 
         function setupJoystick(baseId, stickId, callback) {
             const base = document.getElementById(baseId);
@@ -949,11 +815,8 @@
 
             function handleMove(clientX, clientY) {
                 const rect = base.getBoundingClientRect();
-                const centerX = rect.left + rect.width / 2;
-                const centerY = rect.top + rect.height / 2;
-
-                let dx = clientX - centerX;
-                let dy = clientY - centerY;
+                let dx = clientX - (rect.left + rect.width / 2);
+                let dy = clientY - (rect.top + rect.height / 2);
                 const dist = Math.hypot(dx, dy);
 
                 if (dist > maxRadius) {
@@ -966,18 +829,8 @@
                 callback(dx / maxRadius, dy / maxRadius);
             }
 
-            base.addEventListener('touchstart', (e) => {
-                active = true;
-                const t = e.touches[0];
-                handleMove(t.clientX, t.clientY);
-            });
-
-            window.addEventListener('touchmove', (e) => {
-                if (!active) return;
-                const t = e.touches[0];
-                handleMove(t.clientX, t.clientY);
-            });
-
+            base.addEventListener('touchstart', (e) => { active = true; handleMove(e.touches[0].clientX, e.touches[0].clientY); });
+            window.addEventListener('touchmove', (e) => { if (active) handleMove(e.touches[0].clientX, e.touches[0].clientY); });
             window.addEventListener('touchend', () => {
                 if (!active) return;
                 active = false;
@@ -986,56 +839,20 @@
             });
         }
 
-        // Configurar Joysticks do Controle Deck
-        setupJoystick('deck-left-base', 'deck-left-stick', (x, y) => {
-            deckState.axes.L3 = { x, y };
-            sendDeckState();
-        });
-
-        setupJoystick('deck-right-base', 'deck-right-stick', (x, y) => {
-            deckState.axes.R3 = { x, y };
-            sendDeckState();
-        });
-
-        // Configurar Joysticks do Modo Solo On-Screen
+        setupJoystick('deck-left-base', 'deck-left-stick', (x, y) => { deckState.axes.L3 = { x, y }; });
         setupJoystick('game-joystick-base', 'game-joystick-stick', (x, y) => {
-            player1.vx = x;
-            player1.vy = y;
-            if (x !== 0 || y !== 0) {
-                player1.angle = Math.atan2(y, x);
-            }
+            players[1].vx = x; players[1].vy = y;
+            if (x !== 0 || y !== 0) players[1].angle = Math.atan2(y, x);
         });
 
-        // Botões do Controle Deck
         document.querySelectorAll('[data-btn]').forEach(btn => {
             const btnName = btn.getAttribute('data-btn');
-
-            const start = (e) => {
-                e.preventDefault();
-                btn.classList.add('active');
-                deckState.buttons[btnName] = true;
-                audio.playMenuClick();
-                sendDeckState();
-            };
-
-            const end = (e) => {
-                e.preventDefault();
-                btn.classList.remove('active');
-                deckState.buttons[btnName] = false;
-                sendDeckState();
-            };
-
-            btn.addEventListener('touchstart', start);
-            btn.addEventListener('touchend', end);
-            btn.addEventListener('mousedown', start);
-            btn.addEventListener('mouseup', end);
+            const start = (e) => { e.preventDefault(); btn.classList.add('active'); deckState.buttons[btnName] = true; audio.playMenuClick(); };
+            const end = (e) => { e.preventDefault(); btn.classList.remove('active'); deckState.buttons[btnName] = false; };
+            btn.addEventListener('touchstart', start); btn.addEventListener('touchend', end);
+            btn.addEventListener('mousedown', start); btn.addEventListener('mouseup', end);
         });
 
-        /* =========================================================================
-           BOTÕES E EVENTOS DAS TELAS DO HUB
-           ========================================================================= */
-
-        // 1. Botão Iniciar PC (Host)
         document.getElementById('card-play-pc').addEventListener('click', () => {
             audio.playConsoleBoot();
             myRole = 'PC_HOST';
@@ -1047,13 +864,23 @@
             requestAnimationFrame(updateGame);
         });
 
-        // 2. Botão Virar Controle (Mobile)
+        document.getElementById('btn-start-arena').addEventListener('click', () => {
+            qrModal.classList.add('hidden');
+        });
+
+        document.getElementById('btn-toggle-qr-modal').addEventListener('click', () => {
+            qrModal.classList.remove('hidden');
+        });
+
+        document.getElementById('btn-close-qr-modal').addEventListener('click', () => {
+            qrModal.classList.add('hidden');
+        });
+
         document.getElementById('card-controller-mode').addEventListener('click', () => {
             audio.playMenuClick();
             roomModal.classList.remove('hidden');
         });
 
-        // 3. Botão Modo Solo (Contra Bots)
         document.getElementById('card-solo-mode').addEventListener('click', () => {
             audio.playConsoleBoot();
             myRole = 'SOLO';
@@ -1064,73 +891,66 @@
             requestAnimationFrame(updateGame);
         });
 
-        // Submeter Código de Sala
         document.getElementById('btn-submit-code').addEventListener('click', () => {
             const code = document.getElementById('input-room-code').value;
-            if (code.length < 5) {
-                showAlert('Código Inválido', 'Por favor, digite o código de 5 caracteres.');
-                return;
-            }
-            connectToRoomCode(code);
-        });
-
-        document.getElementById('btn-close-modal').addEventListener('click', () => {
+            if (code.length < 5) return showAlert('Código Inválido', 'Digite 5 caracteres.');
+            connectAsController(code, 2);
             roomModal.classList.add('hidden');
         });
 
-        // Voltar ao Hub Principal
+        document.getElementById('btn-close-modal').addEventListener('click', () => roomModal.classList.add('hidden'));
+
         document.getElementById('btn-home-hub').addEventListener('click', () => {
-            audio.playMenuClick();
             gameRunning = false;
             screenGame.classList.add('hidden');
             screenController.classList.add('hidden');
             screenHub.classList.remove('hidden');
             roomCodeBadge.classList.add('hidden');
-            document.getElementById('net-status').textContent = 'Modo Solo / Aguardando Conexão';
+            btnToggleQrModal.classList.add('hidden');
         });
 
-        // Botões da Tela Solo On-Screen
-        document.getElementById('btn-game-shoot').addEventListener('click', () => shoot(player1));
-        document.getElementById('btn-game-build').addEventListener('click', () => buildWall(player1));
-        document.getElementById('btn-game-swap').addEventListener('click', () => swapWeapon(player1));
+        document.getElementById('btn-game-shoot').addEventListener('click', () => shoot(players[1], 1));
+        document.getElementById('btn-game-build').addEventListener('click', () => buildWall(players[1]));
 
-        // Tela Cheia
         document.getElementById('btn-fullscreen').addEventListener('click', () => {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(() => {});
-            } else {
-                document.exitFullscreen().catch(() => {});
-            }
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+            else document.exitFullscreen().catch(() => {});
         });
 
-        // Suporte Teclado PC no Modo Solo
+        // Controles de Teclado no PC
         window.addEventListener('keydown', (e) => {
             if (!gameRunning) return;
-            if (e.key === 'w' || e.key === 'W') player1.vy = -1;
-            if (e.key === 's' || e.key === 'S') player1.vy = 1;
-            if (e.key === 'a' || e.key === 'A') player1.vx = -1;
-            if (e.key === 'd' || e.key === 'D') player1.vx = 1;
-            if (e.key === ' ') shoot(player1);
-            if (e.key === 'e' || e.key === 'E') buildWall(player1);
-            if (e.key === 'q' || e.key === 'Q') swapWeapon(player1);
+            const p1 = players[1];
+            if (e.key === 'w' || e.key === 'W') p1.vy = -1;
+            if (e.key === 's' || e.key === 'S') p1.vy = 1;
+            if (e.key === 'a' || e.key === 'A') p1.vx = -1;
+            if (e.key === 'd' || e.key === 'D') p1.vx = 1;
+            if (e.key === ' ') shoot(p1, 1);
+            if (e.key === 'e' || e.key === 'E') buildWall(p1);
         });
 
         window.addEventListener('keyup', (e) => {
-            if (['w', 'W', 's', 'S'].includes(e.key)) player1.vy = 0;
-            if (['a', 'A', 'd', 'D'].includes(e.key)) player1.vx = 0;
+            const p1 = players[1];
+            if (['w', 'W', 's', 'S'].includes(e.key)) p1.vy = 0;
+            if (['a', 'A', 'd', 'D'].includes(e.key)) p1.vx = 0;
         });
 
-        // Controlar Mira com o Mouse no PC
         canvas.addEventListener('mousemove', (e) => {
             if (!gameRunning) return;
             const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-            player1.angle = Math.atan2(mouseY - player1.y, mouseX - player1.x);
+            players[1].angle = Math.atan2(e.clientY - rect.top - players[1].y, e.clientX - rect.left - players[1].x);
         });
 
-        canvas.addEventListener('click', () => {
-            if (gameRunning) shoot(player1);
+        // VERIFICAÇÃO AUTOMÁTICA DE QR CODE NA URL AO ABRIR NO CELULAR
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
+            const playerParam = urlParams.get('player');
+
+            if (roomParam && playerParam) {
+                // Se foi aberto escaneando o QR Code pelo celular
+                connectAsController(roomParam, playerParam);
+            }
         });
     </script>
 </body>
